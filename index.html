@@ -1318,19 +1318,6 @@
             let ogLen = S.u.length;
             S.u = S.u.filter(x => { if(seenU.has(x.n)) return false; seenU.add(x.n); return true; });
             let usersModified = (S.u.length !== ogLen);
-
-            let sa = S.u.find(x => x.d === 'SYSTEM ARCHITECT');
-            if (!sa) { 
-                S.u.push({n: 'NATHAN', p: '4556137', d: 'SYSTEM ARCHITECT', s: 'active', m: [...BASE_MODS, 'architect']}); 
-                usersModified = true; 
-            }
-
-            let adm = S.u.find(x => x.n === 'ADMIN' || x.d === 'ADMIN');
-            if (!adm) { 
-                S.u.push({n: 'ADMIN', p: '12345', d: 'ADMIN', s: 'active', m: ADMIN_DEFAULT_MODS}); 
-                usersModified = true; 
-            }
-
             let prModified = false;
             PRODS.forEach(p => {
                 if(!S.pr[p]) { S.pr[p] = 1500; prModified = true; }
