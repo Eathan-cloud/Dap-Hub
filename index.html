@@ -1241,7 +1241,7 @@
             msg: [], curr: null
         };
 
-        // --- MULTI-USER SUPABASE SAVE FUNCTION (SMART MERGE) ---
+        // --- MULTI-USER SUPABASE SAVE FUNCTION (SMART MERGE WITH DELETE SUPPORT) ---
         async function sv() {
             let btn = document.createElement('div');
             btn.id = 'sync-indicator';
@@ -1256,6 +1256,15 @@
                     let cloudArray = data ? data.data : [];
                     
                     let merged = [...cloudArray];
+
+                    // 1. CROSS-CHECK WITH TRASH TO SUPPORT MULTI-USER DELETIONS
+                    let trashedIds = S.trash.filter(t => t.k === k).map(t => t.item && (t.item.id || t.item.n || t.item.c)).filter(Boolean);
+                    merged = merged.filter(cItem => {
+                        let cKey = cItem.id || cItem.n || cItem.c;
+                        return !(cKey && trashedIds.includes(cKey));
+                    });
+
+                    // 2. MERGE LOCAL ADDITIONS AND UPDATES
                     S[k].forEach(localItem => {
                         let uniqueKey = localItem.id || localItem.n || localItem.c; 
                         if (uniqueKey) {
@@ -2707,7 +2716,7 @@
             let discPct = 0;
             let selectedDiscount = document.getElementById('o-v').value;
             if(selectedDiscount) {
-                let vch = S.v.find(x => x.c === selectedDiscount);
+                let vch= S.v.find(x => x.c === selectedDiscount);
                 if(vch && !(vch.e && new Date(vch.e) < new Date())) discPct = vch.p;
             }
 
