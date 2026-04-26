@@ -979,7 +979,7 @@
 
                 <div><label class="text-[10px] font-black text-emerald-600 tracking-widest uppercase block mb-2">FUNDS RECEIVED</label><input id="pay-amt" type="number" class="inp border-2 border-emerald-400 font-black text-2xl text-emerald-700 py-4 bg-emerald-50 shadow-inner" placeholder="₱0.00" onkeyup="calcPayBal()" onchange="calcPayBal()"></div>
                 <div><label class="text-[10px] font-black text-gray-500 tracking-widest uppercase block mb-2">CHANNEL / METHOD</label>
-                    <select id="pay-method" class="inp !py-4 shadow-sm bg-slate-50 font-bold">
+                    <select id="pay-method" class="inp !py-4 shadow-sm bg-slate-50 font-bold" onchange="togglePayMethodFields()">
                         <option value="CASH">CASH (Physical)</option>
                         <option value="GCASH">E-WALLET (GCash/Maya)</option>
                         <option value="BANK TRANSFER">BANK TRANSFER / WIRE</option>
@@ -990,12 +990,17 @@
                 <div><label class="text-[10px] font-black text-gray-500 tracking-widest uppercase block mb-2">PROCESSING OFFICER</label><input id="pay-staff" class="inp uppercase !py-3 shadow-sm bg-slate-50" placeholder="Agent Callsign"></div>
                 <div><label class="text-[10px] font-black text-gray-500 tracking-widest uppercase block mb-2">OR / TXN REF</label><input id="pay-or" class="inp uppercase !py-3 shadow-sm bg-slate-50" placeholder="TXN-9999X"></div>
 
-                <div class="sm:col-span-2 mt-2">
+                <div class="sm:col-span-2 mt-2" id="pay-proof-container">
                     <label class="text-[10px] font-black text-gray-500 tracking-widest uppercase block mb-2">ATTACH PROOF DOC</label>
                     <div class="flex items-center gap-3">
                         <input type="file" id="pay-proof" accept="image/*" class="inp flex-1 text-[11px] !py-3 shadow-sm bg-slate-50" onchange="previewImg(this, 'pay-proof-img')">
                         <img id="pay-proof-img" class="w-14 h-14 object-cover rounded-xl border shadow-sm bg-gray-100 hidden">
                     </div>
+                </div>
+
+                <div class="sm:col-span-2 mt-2 hidden" id="pay-cheque-container">
+                    <label class="text-[10px] font-black text-gray-500 tracking-widest uppercase block mb-2">CHEQUE NUMBER</label>
+                    <input type="text" id="pay-cheque-num" class="inp !py-3 shadow-sm bg-slate-50 font-bold" placeholder="Enter Cheque Number (e.g., CHQ-00123)">
                 </div>
                 
                 <div class="sm:col-span-2 bg-gradient-to-r from-slate-900 to-slate-800 p-6 rounded-2xl text-center shadow-xl mt-4 border border-slate-700 relative overflow-hidden">
@@ -1168,6 +1173,11 @@
                         <img id="qr-img" src="" class="w-32 h-32 object-contain bg-white rounded-lg border shadow-sm">
                         <input type="file" id="qr-up" accept="image/*" class="hidden" onchange="upQR(this)">
                         <button type="button" onclick="document.getElementById('qr-up').click()" class="btn btn-blue !py-2 !px-4 !text-[9px] mt-4 shadow-md rounded-lg">ATTACH QR/PROOF</button>
+                    </div>
+
+                    <div id="cheque-box" class="hidden mt-4 p-4 bg-slate-50 rounded-xl border border-slate-200 shadow-inner flex flex-col items-center">
+                        <label class="text-[10px] font-bold text-gray-500 uppercase tracking-widest block w-full mb-2">CHEQUE NUMBER</label>
+                        <input type="text" id="o-cheque" class="inp font-bold text-center !py-3" placeholder="Enter Cheque #">
                     </div>
                     
                     <div class="bg-gradient-to-br from-[#001f2d] to-slate-900 text-white p-6 rounded-2xl text-center shadow-xl mt-auto border border-slate-700 relative overflow-hidden">
@@ -1432,10 +1442,6 @@
             
             let defMods = ['dashboard'];
             if (r === 'ADMIN') defMods = ADMIN_DEFAULT_MODS;
-            else if (r === 'STAFF') defMods = ['dashboard', 'sales', 'clinic_support'];
-            else if (r === 'HR') defMods = ['dashboard', 'calendar', 'users'];
-            else if (r === 'PRODUCTION') defMods = ['dashboard', 'calendar', 'production'];
-            else if (r === 'ACCOUNTING') defMods = ['dashboard', 'calendar', 'accounting'];
 
             S.u.push({n, d:r, p, s:'pending', m:defMods});
             sv(); alert('Request Sent to Gatekeeper!'); toggleReg(false);
@@ -2221,9 +2227,10 @@
                     <p class="mb-2"><b class="text-xs uppercase text-slate-500 mr-2">Date:</b> <span class="font-bold">${p.date}</span></p>
                     <p class="mb-2"><b class="text-xs uppercase text-slate-500 mr-2">Amount:</b> <span class="font-black text-emerald-600 text-lg">₱${p.amt.toLocaleString()}</span></p>
                     <p class="mb-2"><b class="text-xs uppercase text-slate-500 mr-2">Method:</b> <span class="font-bold">${p.method}</span></p>
+                    ${p.cheque ? `<p class="mb-2"><b class="text-xs uppercase text-slate-500 mr-2">Cheque #:</b> <span class="font-bold">${p.cheque}</span></p>` : ''}
                     <p class="mb-2"><b class="text-xs uppercase text-slate-500 mr-2">Notes/OR:</b> <span class="font-bold">${p.or || p.notes || 'N/A'}</span></p>
                     <p class="mb-2"><b class="text-xs uppercase text-slate-500 mr-2">Staff:</b> <span class="font-bold uppercase">${p.staff || 'N/A'}</span></p>
-                    ${p.proof ? `<img src="${p.proof}" class="mt-4 max-w-full h-auto rounded-lg shadow-sm border border-slate-200">` : '<p class="mt-4 text-[10px] uppercase font-bold text-gray-400 tracking-widest">No visual proof attached.</p>'}
+                    ${p.proof && p.method !== 'PDC' ? `<img src="${p.proof}" class="mt-4 max-w-full h-auto rounded-lg shadow-sm border border-slate-200">` : (p.method !== 'PDC' ? '<p class="mt-4 text-[10px] uppercase font-bold text-gray-400 tracking-widest">No visual proof attached.</p>' : '')}
                 </div>
             `;
             document.getElementById('view-title').innerText = "Payment Record: " + x.id;
@@ -2260,6 +2267,14 @@
             }
         }
 
+        function togglePayMethodFields(){
+            let v = document.getElementById('pay-method').value;
+            let pc = document.getElementById('pay-proof-container');
+            let cc = document.getElementById('pay-cheque-container');
+            if(pc) pc.classList.toggle('hidden', v === 'CASH' || v === 'PDC');
+            if(cc) cc.classList.toggle('hidden', v !== 'PDC');
+        }
+
         function openPaymentModal() {
             if(currentPayCaseIdx === -1) return alert("System requires a selected Ledger Entry first.");
             
@@ -2280,7 +2295,12 @@
             document.getElementById('pay-proof').value = '';
             document.getElementById('pay-proof-img').src = '';
             document.getElementById('pay-proof-img').classList.add('hidden');
+            let chqInput = document.getElementById('pay-cheque-num');
+            if(chqInput) chqInput.value = '';
             
+            document.getElementById('pay-method').value = 'CASH';
+            togglePayMethodFields();
+
             calcPayBal();
             document.getElementById('mod-payment').classList.add('active');
         }
@@ -2306,11 +2326,12 @@
             let pStaff = document.getElementById('pay-staff').value.toUpperCase();
             let pOr = document.getElementById('pay-or').value.toUpperCase();
             let pProof = document.getElementById('pay-proof-img').src;
+            let pCheque = document.getElementById('pay-cheque-num') ? document.getElementById('pay-cheque-num').value.toUpperCase() : '';
 
             let x = S.o[currentPayCaseIdx];
             if(!x.payments) x.payments = [];
             
-            x.payments.push({ date: pDate, amt: amt, method: pMethod, staff: pStaff, or: pOr, proof: pProof });
+            x.payments.push({ date: pDate, amt: amt, method: pMethod, staff: pStaff, or: pOr, proof: pProof, cheque: pCheque });
             x.amtPaid = (x.amtPaid || 0) + amt;
             
             x.manualPayStatus = null;
@@ -2554,6 +2575,7 @@
             let formImgEl = document.getElementById('o-form-img');
             let qrImgEl = document.getElementById('qr-img');
             let stlNameEl = document.getElementById('o-stl-name');
+            let oChequeEl = document.getElementById('o-cheque');
             
             let obj = {
                 id: document.getElementById('o-id').value,
@@ -2570,6 +2592,7 @@
                 qty: document.getElementById('o-qty').value,
                 v: document.getElementById('o-v').value,
                 pay: document.getElementById('o-pay').value,
+                cheque: oChequeEl ? oChequeEl.value.toUpperCase() : '',
                 tot: document.getElementById('o-tot').innerText,
                 rem: document.getElementById('o-rem').value,
                 doc: document.getElementById('o-doc').value,
@@ -2628,7 +2651,9 @@
             }
             
             document.getElementById('o-pay').value = x.pay || 'CASH';
+            if(document.getElementById('o-cheque')) document.getElementById('o-cheque').value = x.cheque || '';
             toggleQR();
+
             if(x.qrImg && x.qrImg.startsWith('data:image')) {
                 document.getElementById('qr-img').src = x.qrImg;
             } else {
@@ -2677,7 +2702,7 @@
         }
         
         function upPatImg(inp) {
-            if (inp.files &&inp.files[0]) {
+            if (inp.files && inp.files[0]) {
                 let r = new FileReader();
                 r.onload = e => {
                     document.getElementById('o-pat-img').src = e.target.result;
@@ -2784,7 +2809,13 @@
         function fillDocInfo(){ 
         }
         
-        function toggleQR(){ document.getElementById('qr-box').classList.toggle('hidden', document.getElementById('o-pay').value==='CASH'); }
+        function toggleQR(){ 
+            let payVal = document.getElementById('o-pay').value;
+            let qrBox = document.getElementById('qr-box');
+            let chqBox = document.getElementById('cheque-box');
+            if(qrBox) qrBox.classList.toggle('hidden', payVal === 'CASH' || payVal === 'PDC');
+            if(chqBox) chqBox.classList.toggle('hidden', payVal !== 'PDC');
+        }
         
         function resetSys(){
             if(confirm('CRITICAL PROTOCOL: Initiate Data Purge? \n\nThis will DELETE all Cases, Clients, Offers, and local records.\n\n')){
@@ -2826,6 +2857,7 @@
                 document.getElementById('o-qty').value = "1";
                 document.getElementById('o-sex').value = "";
                 document.getElementById('qr-img').src = "";
+                if(document.getElementById('o-cheque')) document.getElementById('o-cheque').value = "";
                 document.querySelectorAll('.sex-btn').forEach(b => b.classList.remove('active'));
                 
                 popSel('o-doc', S.d.map(x=>x.n));
@@ -2846,6 +2878,9 @@
                 let tzOffset = now.getTimezoneOffset() * 60000;
                 document.getElementById('o-date').value = (new Date(now - tzOffset)).toISOString().slice(0, 16);
                 
+                document.getElementById('o-pay').value = 'CASH';
+                toggleQR();
+
                 onTypeChange(false);
                 document.getElementById('mod-ord').classList.add('active');
                 calcPrice();
@@ -3406,17 +3441,17 @@
 
             let defMods = ['dashboard'];
             if (finalRole === 'ADMIN') defMods = ADMIN_DEFAULT_MODS;
-            else if (finalRole === 'STAFF') defMods = ['dashboard', 'sales', 'clinic_support'];
-            else if (finalRole === 'HR') defMods = ['dashboard', 'calendar', 'users'];
-            else if (finalRole === 'PRODUCTION') defMods = ['dashboard', 'calendar', 'production'];
-            else if (finalRole === 'ACCOUNTING') defMods = ['dashboard', 'calendar', 'accounting'];
+            else if (finalRole === 'STAFF') defMods = ['dashboard'];
+            else if (finalRole === 'HR') defMods = ['dashboard'];
+            else if (finalRole === 'PRODUCTION') defMods = ['dashboard'];
+            else if (finalRole === 'ACCOUNTING') defMods = ['dashboard'];
 
             S.u.push({n, d: finalRole, p, s:'active', m: defMods});
             sv();
             document.getElementById('sa-u-name').value = '';
             document.getElementById('sa-u-pass').value = '';
             document.getElementById('sa-u-role-custom').value = '';
-            alert("Operative provisioned and granted clearance.");
+            alert("Operative provisioned and granted clearance. Dashboard only default applied.");
             if(document.getElementById('p-users').classList.contains('active')) rUsers();
         }
 
