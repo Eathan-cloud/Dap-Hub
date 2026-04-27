@@ -1567,11 +1567,13 @@
         function rTrash() {
             let t = document.getElementById('trash-list');
             if(!t) return;
-            t.innerHTML = S.trash.map((x,i) => `
+            t.innerHTML = S.trash.map((x,i) => {
+                let displayName = x.item.id || x.item.n || x.item.c || (x.k === 'payment' ? 'Payment ₱' + x.item.amt : 'Data Item');
+                return `
                 <div class="flex justify-between items-center p-4 border border-rose-100 bg-white rounded-xl shadow-sm hover:shadow-md transition-shadow">
                     <div>
                         <span class="font-black text-[9px] bg-rose-50 text-rose-600 border border-rose-200 px-2 py-1 rounded uppercase tracking-widest">${x.k}</span>
-                        <span class="font-black text-sm ml-3 text-slate-700 uppercase tracking-tight">${x.item.id || x.item.n || x.item.c || 'Data Item'}</span>
+                        <span class="font-black text-sm ml-3 text-slate-700 uppercase tracking-tight">${displayName}</span>
                         <span class="text-[9px] text-slate-400 ml-3 font-bold uppercase tracking-widest bg-slate-50 px-2 py-1 rounded">${x.ts}</span>
                     </div>
                     <div class="flex gap-2">
@@ -1580,7 +1582,8 @@
                         <button onclick="hardDelTrash(${i})" class="btn btn-red !py-2 !px-4 !text-[9px] shadow-sm rounded-lg">PURGE</button>
                     </div>
                 </div>
-            `).join('') || '<div class="text-[10px] text-slate-400 font-black tracking-widest p-8 text-center border-2 border-dashed border-slate-200 rounded-2xl uppercase">RECYCLE BIN IS CURRENTLY EMPTY.</div>';
+                `;
+            }).join('') || '<div class="text-[10px] text-slate-400 font-black tracking-widest p-8 text-center border-2 border-dashed border-slate-200 rounded-2xl uppercase">RECYCLE BIN IS CURRENTLY EMPTY.</div>';
         }
 
         function viewTrashItem(idx) {
@@ -1599,6 +1602,20 @@
             if(t.k==='o') S.o.push(t.item);
             if(t.k==='v') S.v.push(t.item);
             if(t.k==='u') S.u.push(t.item);
+            if(t.k==='salesTeam') S.salesTeam.push(t.item);
+            if(t.k==='pipeline') S.pipeline.push(t.item);
+            if(t.k==='payment') {
+                let order = S.o.find(o => o.id === t.caseId);
+                if(order) {
+                    order.payments = order.payments || [];
+                    order.payments.push(t.item);
+                    order.amtPaid = (order.amtPaid || 0) + (t.item.amt || 0);
+                } else {
+                    alert("Cannot restore payment: Parent Case ID " + t.caseId + " no longer exists or is in trash.");
+                    S.trash.splice(idx, 0, t); 
+                    return;
+                }
+            }
             sv(); rTrash(); alert("Item Restored Successfully!");
         }
 
@@ -1629,8 +1646,13 @@
                 }
                 S.trash.push({ k, item, ts: new Date().toLocaleString() });
                 sv();
+                
                 if(document.querySelector('.page.active').id === 'p-architect') rTrash();
-                else go(document.querySelector('.page.active').id.split('-')[1]);
+                
+                if(k==='d') rDocs();
+                if(k==='o') { rOrd(); rProd(); if(typeof rAcc === 'function') rAcc(); dash(); }
+                if(k==='v') rDisc();
+                if(k==='u') rUsers();
             }
         }
 
@@ -2210,10 +2232,11 @@
         }
 
         function delPayment(caseIdx, payIdx) {
-            if(confirm("Delete this payment record?")) {
+            if(confirm("Delete this payment record? This will move to the Architect Recycle Bin.")) {
                 let p = S.o[caseIdx].payments[payIdx];
                 S.o[caseIdx].amtPaid -= p.amt;
-                S.o[caseIdx].payments.splice(payIdx, 1);
+                let removed = S.o[caseIdx].payments.splice(payIdx, 1)[0];
+                S.trash.push({ k: 'payment', item: removed, caseId: S.o[caseIdx].id, ts: new Date().toLocaleString() });
                 sv();
                 rAcc();
             }
@@ -3702,8 +3725,9 @@
         }
 
         function delSalesTeam(i) {
-            if(confirm("Remove this operative from the Sales Team?")) {
-                S.salesTeam.splice(i, 1);
+            if(confirm("Remove this operative from the Sales Team? This will move to the Architect Recycle Bin.")) {
+                let removed = S.salesTeam.splice(i, 1)[0];
+                S.trash.push({ k: 'salesTeam', item: removed, ts: new Date().toLocaleString() });
                 sv(); rSales();
             }
         }
@@ -3759,8 +3783,9 @@
         }
 
         function delPipeline(i) {
-            if(confirm("Remove this pipeline opportunity?")) {
-                S.pipeline.splice(i, 1);
+            if(confirm("Remove this pipeline opportunity? This will move to the Architect Recycle Bin.")) {
+                let removed = S.pipeline.splice(i, 1)[0];
+                S.trash.push({ k: 'pipeline', item: removed, ts: new Date().toLocaleString() });
                 sv(); rSales();
             }
         }
