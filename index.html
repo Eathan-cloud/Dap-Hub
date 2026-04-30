@@ -1270,14 +1270,19 @@
         };
 
         // --- MULTI-USER SUPABASE SAVE FUNCTION (SMART MERGE WITH DELETE SUPPORT) ---
-        async function sv() {
-            let btn = document.createElement('div');
-            btn.id = 'sync-indicator';
-            btn.innerHTML = 'SYNCING TO CLOUD...';
-            btn.style.cssText = 'position:fixed;top:20px;right:20px;background:#f59e0b;color:white;padding:8px 16px;border-radius:8px;z-index:99999;font-size:10px;font-weight:900;box-shadow:0 4px 6px rgba(0,0,0,0.1);';
-            if(!document.getElementById('sync-indicator')) document.body.appendChild(btn);
+        async function sv(targetKey = null) {
+            let btn = document.getElementById('sync-indicator');
+            if(!btn) {
+                btn = document.createElement('div');
+                btn.id = 'sync-indicator';
+                btn.innerHTML = 'SYNCING TO CLOUD...';
+                btn.style.cssText = 'position:fixed;top:20px;right:20px;background:#f59e0b;color:white;padding:8px 16px;border-radius:8px;z-index:99999;font-size:10px;font-weight:900;box-shadow:0 4px 6px rgba(0,0,0,0.1);';
+                document.body.appendChild(btn);
+            }
 
-            const keys = Object.keys(S).filter(k => k !== 'curr');
+            // If targetKey is passed, ONLY sync that specific module to make it lightning fast
+            const keys = targetKey ? [targetKey] : Object.keys(S).filter(k => k !== 'curr');
+            
             for (let k of keys) {
                 if (Array.isArray(S[k]) && k !== 'trash' && k !== 'msg') {
                     const { data } = await _supabase.from('dap_store').select('data').eq('id', 'dap_v4_' + k).single();
@@ -1285,14 +1290,12 @@
                     
                     let merged = [...cloudArray];
 
-                    // 1. CROSS-CHECK WITH TRASH TO SUPPORT MULTI-USER DELETIONS
                     let trashedIds = S.trash.filter(t => t.k === k).map(t => t.item && (t.item.id || t.item.n || t.item.c)).filter(Boolean);
                     merged = merged.filter(cItem => {
                         let cKey = cItem.id || cItem.n || cItem.c;
                         return !(cKey && trashedIds.includes(cKey));
                     });
 
-                    // 2. MERGE LOCAL ADDITIONS AND UPDATES
                     S[k].forEach(localItem => {
                         let uniqueKey = localItem.id || localItem.n || localItem.c; 
                         if (uniqueKey) {
@@ -1311,10 +1314,8 @@
                 }
             }
             
-            let ind = document.getElementById('sync-indicator');
-            if(ind) ind.remove();
+            if(document.getElementById('sync-indicator')) document.getElementById('sync-indicator').remove();
         }
-
         // --- ASYNC BOOTLOADER ---
         async function initApp() {
             document.body.innerHTML += '<div id="loading-supa" style="position:fixed;inset:0;background:#001f2d;z-index:99999;color:white;display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:900;">SYNCING DATABASE... PLEASE WAIT</div>';
@@ -2076,15 +2077,15 @@
             document.getElementById('mod-view').classList.add('active');
         }
 
-        function saveDoc() {
+       async function saveDoc() {
             let req = ['d-name', 'd-clinic', 'd-phone', 'd-addr'];
             for (let id of req) {
                 let el = document.getElementById(id);
                 if (!el.value || el.value.trim() === "") { alert("Protocol Error: Missing mandatory fields!"); el.focus(); return false; }
             }
+            
             let i = document.getElementById('d-idx').value;
             let obj = {
-                id: document.getElementById('d-id').value,
                 n: document.getElementById('d-name').value.toUpperCase(),
                 clinic: document.getElementById('d-clinic').value.toUpperCase(),
                 branch: document.getElementById('d-branch').value.toUpperCase(),
@@ -2100,12 +2101,33 @@
                 addr: document.getElementById('d-addr').value,
                 pic: document.getElementById('d-img-prev').src
             };
-            if (i === "") S.d.push(obj); else S.d[i] = obj;
-            sv(); rDocs(); closeModals(); alert('Client Record Commited!');
-            if(document.getElementById('p-maintenance').classList.contains('active')) rMaintenance();
-            if(document.getElementById('p-sales').classList.contains('active')) rSales();
-        }
 
+            try {
+                if (i === "") {
+                    // NEW CLIENT: Fast Atomic Sync for sequential Doc IDs
+                    const { data } = await _supabase.from('dap_store').select('data').eq('id', 'dap_v4_d').single();
+                    let liveDocs = data ? data.data : [...S.d];
+                    
+                    obj.id = "DOC-" + (liveDocs.length + 101);
+                    
+                    liveDocs.push(obj);
+                    await _supabase.from('dap_store').upsert({ id: 'dap_v4_d', data: liveDocs });
+                    S.d = liveDocs; // Sync local state
+                } else {
+                    // EDIT EXISTING CLIENT
+                    obj.id = document.getElementById('d-id').value;
+                    S.d[i] = obj;
+                    await sv('d'); // Fast targeted sync
+                }
+                
+                rDocs(); closeModals(); alert('Client Record Commited!');
+                if(document.getElementById('p-maintenance').classList.contains('active')) rMaintenance();
+                if(document.getElementById('p-sales').classList.contains('active')) rSales();
+            } catch(e) {
+                console.error(e);
+                alert("Error committing client to system.");
+            }
+        }
         function editDoc(i){
             let x=S.d[i];
             document.getElementById('d-idx').value=i;
@@ -2624,7 +2646,12 @@
             alert('Clinic Support Details Saved!');
         }
 
-        function saveOrd() {
+        window.isSavingOrder = false; // Global physical lock
+
+        async function saveOrd() {
+            // Reject click immediately if already saving
+            if (window.isSavingOrder) return;
+            
             let reqFields = ['o-pat', 'o-doc', 'o-date', 'o-qty'];
             if (!document.getElementById('wrap-o-due').classList.contains('hidden')) {
                 reqFields.push('o-due');
@@ -2632,7 +2659,8 @@
 
             for (let id of reqFields) {
                 let el = document.getElementById(id);
-                if (!el || el.value.trim() === "") { alert("Protocol Error: Missing mandatory fields!"); el?.focus(); return false; }}
+                if (!el || el.value.trim() === "") { alert("Protocol Error: Missing mandatory fields!"); el?.focus(); return false; }
+            }
 
             if (!document.getElementById('o-sex').value) { alert("Protocol Error: Subject Gender Marker Required!"); return false; }
 
@@ -2640,56 +2668,99 @@
             document.querySelectorAll('.ochk:checked').forEach(c => prs.push(c.value));
             if (prs.length === 0) { alert("Protocol Error: At least one product spec is required!"); return false; }
 
-            let i = document.getElementById('o-idx').value;
-            
-            let pImgEl = document.getElementById('o-pat-img');
-            let formImgEl = document.getElementById('o-form-img');
-            let qrImgEl = document.getElementById('qr-img');
-            let stlNameEl = document.getElementById('o-stl-name');
-            let oChequeEl = document.getElementById('o-cheque');
-            
-            let obj = {
-                id: document.getElementById('o-id').value,
-                pic: document.getElementById('o-pic').value,
-                pat: document.getElementById('o-pat').value.toUpperCase(),
-                sex: document.getElementById('o-sex').value,
-                age: document.getElementById('o-age').value,
-                date: document.getElementById('o-date').value,
-                comp: document.getElementById('o-comp').value,
-                due: document.getElementById('o-due').value,
-                ret: document.getElementById('o-ret').value,
-                st: document.getElementById('o-stat').value,
-                shade: document.getElementById('o-shade').value,
-                qty: document.getElementById('o-qty').value,
-                v: document.getElementById('o-v').value,
-                pay: document.getElementById('o-pay').value,
-                cheque: oChequeEl ? oChequeEl.value.toUpperCase() : '',
-                tot: document.getElementById('o-tot').innerText,
-                rem: document.getElementById('o-rem').value,
-                doc: document.getElementById('o-doc').value,
-                prods: prs,
-                
-                pImg: pImgEl.src && pImgEl.src.startsWith('data:') ? pImgEl.src : "",
-                qrImg: qrImgEl.src && qrImgEl.src.startsWith('data:') ? qrImgEl.src : "",
-                formImg: formImgEl.src && formImgEl.src.startsWith('data:') ? formImgEl.src : "",
-                stlName: stlNameEl.innerText === 'NO FILE' ? '' : stlNameEl.innerText,
-                
-                asn: (i !== "" ? S.o[i].asn : ""),
-                amtPaid: (i !== "" ? (S.o[i].amtPaid || 0) : 0),
-                payments: (i !== "" ? (S.o[i].payments || []) : [])
-            };
+            // ENGAGE PHYSICAL LOCK
+            window.isSavingOrder = true;
+            let allBtns = document.querySelectorAll('#mod-ord button');
+            allBtns.forEach(b => { 
+                b.disabled = true; 
+                b.style.pointerEvents = 'none'; 
+                b.style.opacity = '0.5'; 
+            });
 
-            if (i === "") S.o.push(obj); else S.o[i] = Object.assign(S.o[i], obj);
-            sv(); rOrd(); rProd(); dash(); if(typeof rAcc === 'function') rAcc();
-            
-            if(document.getElementById('p-calendar').classList.contains('active')) {
-                initFullCal();
+            try {
+                let i = document.getElementById('o-idx').value;
+                let pImgEl = document.getElementById('o-pat-img');
+                let formImgEl = document.getElementById('o-form-img');
+                let qrImgEl = document.getElementById('qr-img');
+                let stlNameEl = document.getElementById('o-stl-name');
+                let oChequeEl = document.getElementById('o-cheque');
+                
+                let obj = {
+                    pic: document.getElementById('o-pic').value,
+                    pat: document.getElementById('o-pat').value.toUpperCase(),
+                    sex: document.getElementById('o-sex').value,
+                    age: document.getElementById('o-age').value,
+                    date: document.getElementById('o-date').value,
+                    comp: document.getElementById('o-comp').value,
+                    due: document.getElementById('o-due').value,
+                    ret: document.getElementById('o-ret').value,
+                    st: document.getElementById('o-stat').value,
+                    shade: document.getElementById('o-shade').value,
+                    qty: document.getElementById('o-qty').value,
+                    v: document.getElementById('o-v').value,
+                    pay: document.getElementById('o-pay').value,
+                    cheque: oChequeEl ? oChequeEl.value.toUpperCase() : '',
+                    tot: document.getElementById('o-tot').innerText,
+                    rem: document.getElementById('o-rem').value,
+                    doc: document.getElementById('o-doc').value,
+                    prods: prs,
+                    
+                    pImg: pImgEl && pImgEl.src && pImgEl.src.startsWith('data:') ? pImgEl.src : "",
+                    qrImg: qrImgEl && qrImgEl.src && qrImgEl.src.startsWith('data:') ? qrImgEl.src : "",
+                    formImg: formImgEl && formImgEl.src && formImgEl.src.startsWith('data:') ? formImgEl.src : "",
+                    stlName: stlNameEl && stlNameEl.innerText !== 'NO FILE' ? stlNameEl.innerText : "",
+                    
+                    asn: (i !== "" ? S.o[i].asn : ""),
+                    amtPaid: (i !== "" ? (S.o[i].amtPaid || 0) : 0),
+                    payments: (i !== "" ? (S.o[i].payments || []) : [])
+                };
+
+                if (i === "") {
+                    // NEW ORDER: Fast Atomic Sync to guarantee sequential numbers
+                    // 1. Instantly fetch the live data from cloud
+                    const { data } = await _supabase.from('dap_store').select('data').eq('id', 'dap_v4_o').single();
+                    let liveOrders = data ? data.data : [...S.o];
+                    
+                    // 2. Generate perfect sequential ID based on LIVE cloud data
+                    let t = document.getElementById('o-ctype').value;
+                    let realCount = liveOrders.filter(x => x.id && x.id.startsWith(t)).length;
+                    obj.id = `${t}0${1655 + realCount}`;
+                    
+                    // 3. Push and instantly upload ONLY the orders table
+                    liveOrders.push(obj);
+                    await _supabase.from('dap_store').upsert({ id: 'dap_v4_o', data: liveOrders });
+                    S.o = liveOrders; // Sync local state
+                } else {
+                    // EDIT EXISTING ORDER
+                    obj.id = document.getElementById('o-id').value;
+                    S.o[i] = Object.assign(S.o[i], obj);
+                    await sv('o'); // Fast targeted sync
+                }
+                
+                rOrd(); rProd(); dash(); if(typeof rAcc === 'function') rAcc();
+                if(document.getElementById('p-calendar').classList.contains('active')) {
+                    initFullCal();
+                }
+                
+                // FIRE ALERT WHILE MODAL IS STILL OPEN
+                setTimeout(() => {
+                    alert("JOB ORDER COMMITTED TO SYSTEM.");
+                    
+                    // CLOSE MODAL ONLY AFTER CLICKING 'OK' ON ALERT
+                    closeModals();
+                    
+                    // Release locks
+                    window.isSavingOrder = false;
+                    allBtns.forEach(b => { b.disabled = false; b.style.pointerEvents = 'auto'; b.style.opacity = '1'; });
+                }, 50);
+                
+            } catch (err) {
+                console.error(err);
+                alert("System Error: Failed to save record.");
+                window.isSavingOrder = false;
+                allBtns.forEach(b => { b.disabled = false; b.style.pointerEvents = 'auto'; b.style.opacity = '1'; });
             }
-            
-            closeModals(); alert("JOB ORDER COMMITTED TO SYSTEM.");
-            return true;
         }
-
         function editOrd(i) {
             let x = S.o[i]; modal('ord');
             hideClinicSupportFields(false);
