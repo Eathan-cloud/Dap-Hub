@@ -95,6 +95,10 @@
     </style>
 </head>
 <body>
+    <div id="system-boot-screen" class="fixed inset-0 bg-[#001f2d] z-[9999999] flex flex-col items-center justify-center text-[#189ad3] text-[12px] font-black tracking-widest uppercase transition-opacity duration-300">
+        <div class="w-12 h-12 border-4 border-[#189ad3] border-t-transparent rounded-full animate-spin mb-4 shadow-lg"></div>
+        LOADING PLEASE WAIT...
+    </div>
     <div id="maint-overlay">
         <div class="bg-white p-10 rounded-2xl max-w-lg border-t-8 border-yellow-500 w-full shadow-2xl min-h-[250px] flex flex-col justify-center">
             <h1 class="text-3xl font-black text-yellow-600 mb-4 uppercase">System Maintenance</h1>
@@ -1217,6 +1221,14 @@
             </div>
         </div>
     </div>
+    <div id="mod-idle-warning" class="modal">
+        <div class="modal-box !max-w-md !rounded-3xl !p-8 text-center w-[95%] sm:w-full mx-auto border-t-8 border-red-500">
+            <h2 class="text-3xl font-black mb-4 uppercase text-red-600 tracking-tight">Session Expiring</h2>
+            <p class="text-xs font-bold text-gray-500 mb-6 uppercase tracking-widest">You have been inactive. For your security, you will be logged out in:</p>
+            <div class="text-6xl font-black text-slate-800 mb-8" id="idle-countdown">60</div>
+            <button onclick="resetIdleTimer()" class="btn btn-blue w-full py-4 text-sm tracking-widest shadow-xl rounded-xl">I AM STILL HERE</button>
+        </div>
+    </div>
 
     <div id="chat-box">
         <div class="chat-header rounded-t-20">
@@ -1316,16 +1328,47 @@
             
             if(document.getElementById('sync-indicator')) document.getElementById('sync-indicator').remove();
         }
-        // --- ASYNC BOOTLOADER ---
+      // --- ASYNC BOOTLOADER (ZERO-FLASH VERSION) ---
         async function initApp() {
-            document.body.innerHTML += '<div id="loading-supa" style="position:fixed;inset:0;background:#001f2d;z-index:99999;color:white;display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:900;">SYNCING DATABASE... PLEASE WAIT</div>';
+            // 1. CHECK THE TOKEN INSTANTLY (While Boot Screen covers the UI)
+            let session = sessionStorage.getItem('dap_session');
+            let isLoggedIn = false;
+            
+            if(session) {
+                try {
+                    let parsed = JSON.parse(session);
+                    let currentTime = Date.now();
+                    let minsPassed = (currentTime - (parsed.ts || 0)) / (1000 * 60);
+                    
+                    if(minsPassed <= 5) {
+                        // FORCE HIDE LOGIN SCREEN IMMEDIATELY
+                        document.getElementById('auth-layer').style.display = 'none'; 
+                        document.getElementById('auth-layer').classList.add('hidden');
+                        document.getElementById('app-shell').classList.remove('hidden');
+                        document.getElementById('app-shell').style.display = 'flex';
+                        
+                        // Temporarily trust token to hold the screen
+                        S.curr = { n: parsed.n, p: parsed.p, d: 'LOADING', s: 'active', m: BASE_MODS }; 
+                        parsed.ts = currentTime; 
+                        sessionStorage.setItem('dap_session', JSON.stringify(parsed));
+                        
+                        isLoggedIn = true;
+                    } else {
+                        sessionStorage.removeItem('dap_session');
+                    }
+                } catch(e) {
+                    sessionStorage.removeItem('dap_session');
+                }
+            } else {
+                 // No token = Force login screen to be ready under the boot screen
+                 document.getElementById('auth-layer').classList.remove('hidden');
+                 document.getElementById('auth-layer').style.display = 'flex';
+            }
 
             try {
+                // 2. SILENTLY FETCH CLOUD DATA
                 const { data, error } = await _supabase.from('dap_store').select('*');
-                if (error) {
-                    console.error("Supabase load error:", error);
-                    alert("Database sync failed. Check console.");
-                } else if (data && data.length > 0) {
+                if (data && data.length > 0) {
                     let map = {};
                     data.forEach(row => map[row.id] = row.data);
                     S.u = map['dap_v4_u'] || S.u;
@@ -1349,7 +1392,27 @@
                     S.msg = map['dap_v4_msg'] || S.msg;
                 }
             } catch (e) {
-                console.error("Failed to connect to Supabase:", e);
+                console.warn("Silent sync delayed.");
+            }
+
+            // 3. ATTACH REAL PROFILE AND INITIALIZE
+            if (isLoggedIn && session) {
+                let parsed = JSON.parse(session);
+                let realAcc = S.u.find(x => x.n === parsed.n && String(x.p) === String(parsed.p));
+                
+                if (realAcc && realAcc.s === 'active') {
+                    S.curr = realAcc;
+                    initNav(); initChat(); populateSandboxSelect(); checkMaintenance();
+                    startIdleTracking();
+                } else {
+                    // Security trigger: Account was deleted or banned while they were offline
+                    sessionStorage.removeItem('dap_session');
+                    isLoggedIn = false;
+                    document.getElementById('auth-layer').classList.remove('hidden');
+                    document.getElementById('auth-layer').style.display = 'flex';
+                    document.getElementById('app-shell').classList.add('hidden');
+                    document.getElementById('app-shell').style.display = 'none';
+                }
             }
 
             let seenU = new Set();
@@ -1366,46 +1429,25 @@
                 }
             });
 
-            if(usersModified || prModified) {
-                await sv(); 
-            }
-            
+            if(usersModified || prModified) await sv(); 
             S.dynMods.forEach(m => injectDynMod(m));
-
-            let ld = document.getElementById('loading-supa');
-            if(ld) ld.remove();
 
             let savedBg = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim();
             if(savedBg === '#0f172a') document.body.classList.add('dark-mode');
             
-            if (S.u.length === 0 || (S.u.length === 1 && S.u[0].d === 'SYSTEM ARCHITECT')) {
-                alert('CRITICAL: System Architect Initialization Required.\nPlease register an ADMIN account via "Request Access" to provision the baseline environment.');
-                toggleReg(true);
+            if(!isLoggedIn && (S.u.length === 0 || (S.u.length === 1 && S.u[0].d === 'SYSTEM ARCHITECT'))) {
+                alert('CRITICAL: System Architect Initialization Required.');
                 document.getElementById('r-role').value = 'ADMIN';
+                toggleReg(true);
             }
 
-            // AUTO-LOGIN LOGIC (Checks persistence)
-            let session = localStorage.getItem('dap_session');
-            if(session) {
-                try {
-                    let parsed = JSON.parse(session);
-                    let acc = S.u.find(x => x.n === parsed.n && x.p === parsed.p);
-                    if(acc && acc.s === 'active') {
-                        S.curr = acc;
-                        document.getElementById('auth-layer').classList.add('hidden');
-                        document.getElementById('app-shell').classList.remove('hidden');
-                        document.getElementById('app-shell').style.display = 'flex';
-                        initNav(); initChat(); populateSandboxSelect(); checkMaintenance();
-                    } else {
-                        // Invalid token or account deactivated, flush local session
-                        localStorage.removeItem('dap_session');
-                    }
-                } catch(e) {
-                    localStorage.removeItem('dap_session');
-                }
+            // 4. FADE OUT AND DESTROY BOOT SCREEN
+            let bootScreen = document.getElementById('system-boot-screen');
+            if(bootScreen) {
+                bootScreen.style.opacity = "0";
+                setTimeout(() => bootScreen.remove(), 300); // Wait for fade out, then destroy
             }
         }
-
         // --- ALL YOUR EXACT ORIGINAL FUNCTIONS START HERE ---
         function closeModals() { document.querySelectorAll('.modal').forEach(m => m.classList.remove('active')); }
 
@@ -1457,22 +1499,32 @@
         }
 
         setInterval(checkMaintenance, 3000);
-
-        function login(){
+       function login(){
             let u=document.getElementById('l-user').value.toUpperCase();
             let p=document.getElementById('l-pass').value;
-            let acc=S.u.find(x=>x.n===u && x.p===p);
+            
+            let acc=S.u.find(x => x.n === u && String(x.p) === String(p));
+            
             if(!acc) return alert('No User Found. Check Callsign/Key.');
             if(acc.s !== 'active') return alert('Access Restricted. Status: ' + acc.s.toUpperCase());
             
-            // Generate Local Session
-            localStorage.setItem('dap_session', JSON.stringify({n: acc.n, p: acc.p}));
+            // Generate Local Session WITH TIMESTAMP
+            sessionStorage.setItem('dap_session', JSON.stringify({
+                n: acc.n, 
+                p: String(acc.p), 
+                ts: Date.now() 
+            }));
 
             S.curr=acc;
+            
+            // FIX: Force kill the login screen so it doesn't get stuck
+            document.getElementById('auth-layer').style.display = 'none';
             document.getElementById('auth-layer').classList.add('hidden');
             document.getElementById('app-shell').classList.remove('hidden');
             document.getElementById('app-shell').style.display = 'flex';
+            
             initNav(); initChat(); populateSandboxSelect(); checkMaintenance();
+            startIdleTracking(); // START THE IDLE TIMER
         }
         
         function register(){
@@ -1490,7 +1542,7 @@
         }
         
         function logout(){ 
-            localStorage.removeItem('dap_session');
+            sessionStorage.removeItem('dap_session');
             location.reload(); 
         }
 
@@ -3062,7 +3114,7 @@
 
         function forceStop() {
             if(confirm('OVERRIDE AUTHORIZATION: EMERGENCY STOP?\n\nThis will terminate system cache permanently. Proceed?')) {
-                localStorage.clear();
+                sessionStorage.clear();
                 location.reload();
             }
         }
@@ -3617,7 +3669,7 @@
             sv();
             
             // Update Local Session on Name/Pass Change
-            localStorage.setItem('dap_session', JSON.stringify({n: S.curr.n, p: S.curr.p}));
+            sessionStorage.setItem('dap_session', JSON.stringify({n: S.curr.n, p: S.curr.p}));
 
             alert('Personal identity matrix updated. Your new credentials are now active.');
             initChat();
@@ -4302,36 +4354,142 @@
             closeModals();
             alert('Employee Dossier Updated.');
         }
+        // --- SECURE IDLE TIMEOUT SYSTEM ---
+        let idleTime = 0;
+        let idleInterval;
+        let countdownInterval;
+        let countdownValue = 60;
+        let isIdleModalOpen = false;
 
-        // --- FIRE EVERYTHING UP ---
-        // --- LIVE COMM-LINK (AUTO-SYNC MESSAGES) ---
-        async function syncMessagesLive() {
-            if (!S.curr) return; // Only run if a user is logged in
+        function startIdleTracking() {
+            // Track physical activity
+            window.onload = resetIdle;
+            window.onmousemove = resetIdle;
+            window.onmousedown = resetIdle;
+            window.ontouchstart = resetIdle;
+            window.onclick = resetIdle;
+            window.onkeydown = resetIdle;
+
+            // Check every 1 second
+            clearInterval(idleInterval);
+            idleInterval = setInterval(idleCheck, 1000);
+        }
+
+        function resetIdle() {
+            // If the warning modal is already showing, moving the mouse won't save them. 
+            // They MUST click the "I AM STILL HERE" button.
+            if (isIdleModalOpen) return; 
+            
+            idleTime = 0;
+            
+            // Constantly update the timestamp in sessionStorage so refreshing the page doesn't kick them out
+            if (S.curr) {
+                let session = sessionStorage.getItem('dap_session');
+                if (session) {
+                    try {
+                        let p = JSON.parse(session);
+                        p.ts = Date.now();
+                        sessionStorage.setItem('dap_session', JSON.stringify(p));
+                    } catch(e){}
+                }
+            }
+        }
+
+        function idleCheck() {
+            if (!S.curr) return; // Only count if logged in
+            idleTime++;
+            
+            // 180 seconds = exactly 3 minutes of zero physical movement
+            if (idleTime >= 180 && !isIdleModalOpen) {
+                showIdleWarning();
+            }
+        }
+
+        function showIdleWarning() {
+            isIdleModalOpen = true;
+            countdownValue = 60;
+            document.getElementById('idle-countdown').innerText = countdownValue;
+            document.getElementById('mod-idle-warning').classList.add('active');
+            
+            clearInterval(countdownInterval);
+            countdownInterval = setInterval(() => {
+                countdownValue--;
+                document.getElementById('idle-countdown').innerText = countdownValue;
+                
+                // If the timer hits 0, nuke the session and reload the page
+                if (countdownValue <= 0) {
+                    clearInterval(countdownInterval);
+                    logout(); 
+                }
+            }, 1000);
+        }
+
+        function resetIdleTimer() {
+            isIdleModalOpen = false;
+            idleTime = 0;
+            clearInterval(countdownInterval);
+            document.getElementById('mod-idle-warning').classList.remove('active');
+            resetIdle();
+        }
+        // --- MASTER GLOBAL LIVE SYNC (Total System Pulse - 3 Sec Rule) ---
+        async function syncGlobalLive() {
+            // Stop sync if not logged in or if the user is currently typing/saving a case
+            if (!S.curr || window.isSavingOrder) return; 
+
             try {
-                const { data } = await _supabase.from('dap_store').select('data').eq('id', 'dap_v4_msg').single();
-                if (data && data.data) {
-                    // Check if new messages arrived in the cloud that we don't have locally
-                    if (data.data.length !== S.msg.length) {
-                        let isNewMessage = data.data.length > S.msg.length;
-                        S.msg = data.data; // Update local memory
-                        
-                        let chatBox = document.getElementById('chat-box');
-                        let bubble = document.getElementById('chat-bubble');
-                        
-                        if (chatBox.style.display === 'flex') {
-                            // If chat is open, show the new message instantly on screen
-                            rChat(); 
-                        } else if (bubble && isNewMessage) {
-                            // If chat is closed, add a blinking red notification dot
-                            bubble.innerHTML = '<span class="absolute top-0 right-0 w-3 h-3 bg-red-500 rounded-full animate-ping"></span><span class="absolute top-0 right-0 w-3 h-3 bg-red-500 rounded-full"></span><svg class="w-6 h-6 drop-shadow-md text-white relative z-10" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path></svg>';
-                        }
+                // 1. Pull core dynamic tables
+                const { data: ordRes } = await _supabase.from('dap_store').select('data').eq('id', 'dap_v4_o').single();
+                const { data: msgRes } = await _supabase.from('dap_store').select('data').eq('id', 'dap_v4_msg').single();
+                const { data: docRes } = await _supabase.from('dap_store').select('data').eq('id', 'dap_v4_d').single();
+
+                let needsRefresh = false;
+
+                // 2. Sync Chat
+                if (msgRes && msgRes.data && msgRes.data.length !== S.msg.length) {
+                    let isNew = msgRes.data.length > S.msg.length;
+                    S.msg = msgRes.data;
+                    let chatBox = document.getElementById('chat-box');
+                    let bubble = document.getElementById('chat-bubble');
+                    if (chatBox.style.display === 'flex') { rChat(); } 
+                    else if (bubble && isNew) {
+                        bubble.innerHTML = '<span class="absolute top-0 right-0 w-3 h-3 bg-red-500 rounded-full animate-ping"></span><span class="absolute top-0 right-0 w-3 h-3 bg-red-500 rounded-full"></span><svg class="w-6 h-6 drop-shadow-md text-white relative z-10" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path></svg>';
                     }
                 }
-            } catch(e) {}
+
+                // 3. Sync Cases (Dashboard, Accounting, Production, Clinic Support)
+                if (ordRes && ordRes.data && JSON.stringify(ordRes.data) !== JSON.stringify(S.o)) {
+                    S.o = ordRes.data;
+                    needsRefresh = true;
+                }
+
+                // 4. Sync Doctors/Clients
+                if (docRes && docRes.data && JSON.stringify(docRes.data) !== JSON.stringify(S.d)) {
+                    S.d = docRes.data;
+                    needsRefresh = true;
+                }
+
+                // 5. Instantly update all visible modules if a change was detected
+                if (needsRefresh) {
+                    console.log("Cloud update detected. Synchronizing modules...");
+                    if(typeof rOrd === 'function') rOrd(); 
+                    if(typeof dash === 'function') dash(); 
+                    if(typeof rAcc === 'function') rAcc(); 
+                    if(typeof rDocs === 'function') rDocs();
+                    if(typeof rProd === 'function') rProd();
+                    
+                    // Only refresh these if their pages are currently active to save resources
+                    if(typeof rSales === 'function' && document.getElementById('p-sales').classList.contains('active')) rSales();
+                    if(typeof rMaintenance === 'function' && document.getElementById('p-maintenance').classList.contains('active')) rMaintenance();
+                    if(typeof initFullCal === 'function' && document.getElementById('p-calendar').classList.contains('active')) initFullCal();
+                }
+
+            } catch(e) {
+                console.warn("Live heartbeat skipped: Network busy.");
+            }
         }
-        
-        // This tells the browser to run the live check every 3 seconds (3000ms)
-        setInterval(syncMessagesLive, 3000);
+
+        // Engage the 3-second live heartbeat globally
+        setInterval(syncGlobalLive, 3000);
         initApp();
     </script>
 </body>
