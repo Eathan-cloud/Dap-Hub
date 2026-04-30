@@ -21,6 +21,17 @@
         .dark-mode th { background-color: #1e293b !important; color: #cbd5e1 !important; border-bottom-color: #334155 !important; }
         .dark-mode td { border-bottom-color: #334155 !important; color: #f8fafc !important; }
         .dark-mode span, .dark-mode h1, .dark-mode h2, .dark-mode h3, .dark-mode h4, .dark-mode h5, .dark-mode p, .dark-mode div { color: inherit; }
+        
+        /* Dark Mode KPI Fixes */
+        .dark-mode .kpi-val-blue { color: #3b82f6 !important; }
+        .dark-mode .kpi-val-indigo { color: #6366f1 !important; }
+        .dark-mode .kpi-val-cyan { color: #06b6d4 !important; }
+        .dark-mode .kpi-val-orange { color: #f59e0b !important; }
+        .dark-mode .kpi-val-teal { color: #14b8a6 !important; }
+        .dark-mode .kpi-val-emerald { color: #10b981 !important; }
+        .dark-mode .kpi-val-rose { color: #f43f5e !important; }
+        .dark-mode .kpi-val-purple { color: #8b5cf6 !important; }
+
         html, body { font-family: var(--font-main), sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; transition: background 0.3s; }
         .nav-item { padding: 12px 16px; border-radius: 10px; font-weight: 700; color: #64748b; font-size: 12px; text-transform: uppercase; cursor: pointer; white-space: nowrap; transition: 0.2s; letter-spacing: 0.5px; }
         .nav-item.active { background: var(--secondary) !important; color: white !important; box-shadow: 0 4px 15px rgba(24, 154, 211, 0.3); }
@@ -444,13 +455,16 @@
                     
                     <div class="grid grid-cols-1 xl:grid-cols-5 gap-6 mb-8">
                         <div class="card p-0 col-span-1 xl:col-span-3 flex flex-col h-[650px] shadow-md border-0 rounded-2xl overflow-hidden">
-                            <div class="p-5 bg-gradient-to-r from-slate-50 to-white border-b flex justify-between items-center shrink-0">
-                                <h3 class="font-black uppercase text-slate-800 tracking-widest text-xs">Accounts Receivables Ledger</h3>
-                                <select id="acc-filter" class="inp !mb-0 !py-2 !w-auto text-[11px] font-bold shadow-sm" onchange="rAcc()">
-                                    <option value="ALL">VIEW ALL RECORDS</option>
-                                    <option value="UNPAID">SHOW UNPAID/PARTIAL ONLY</option>
-                                </select>
-                            </div>
+        <div class="p-5 bg-gradient-to-r from-slate-50 to-white border-b flex flex-col sm:flex-row justify-between sm:items-center shrink-0 gap-3">
+           <h3 class="font-black uppercase text-slate-800 tracking-widest text-xs">Accounts Receivables Ledger</h3>
+           <div class="flex gap-2">
+            <input id="acc-search" onkeyup="rAcc()" placeholder="Search Case or Doc..." class="inp !py-2 !mb-0 text-[11px] shadow-sm rounded-lg w-full sm:w-48">
+        <select id="acc-filter" class="inp !mb-0 !py-2 !w-auto text-[11px] font-bold shadow-sm rounded-lg" onchange="rAcc()">
+            <option value="ALL">VIEW ALL RECORDS</option>
+            <option value="UNPAID">SHOW UNPAID/PARTIAL</option>
+        </select>
+    </div>
+</div>
                             <div class="table-wrap w-full overflow-x-auto flex-1 overflow-y-auto rounded-none border-0 custom-scroll bg-white">
                                 <table class="w-full !min-w-[900px]">
                                     <thead class="bg-slate-50 sticky top-0 z-10 shadow-sm">
@@ -677,10 +691,13 @@
                     
                     <div class="grid grid-cols-1 xl:grid-cols-3 gap-8 mb-8">
                         <div class="card p-0 col-span-1 xl:col-span-2 flex flex-col h-[750px] border-0 shadow-lg rounded-2xl overflow-hidden bg-white">
-                            <div class="p-5 bg-gradient-to-r from-orange-50 to-white border-b flex justify-between items-center shrink-0">
-                                <h3 class="font-black uppercase text-orange-900 tracking-widest text-xs">Job Orders</h3>
-                                <select id="prod-filter" class="inp !mb-0 !py-2 !w-auto text-[11px] font-bold shadow-sm rounded-lg" onchange="rProd()"></select>
-                            </div>
+    <div class="p-5 bg-gradient-to-r from-orange-50 to-white border-b flex flex-col sm:flex-row justify-between sm:items-center shrink-0 gap-3">
+    <h3 class="font-black uppercase text-orange-900 tracking-widest text-xs">Job Orders</h3>
+    <div class="flex gap-2">
+        <input id="prod-search" onkeyup="rProd()" placeholder="Search Case or Doc..." class="inp !py-2 !mb-0 text-[11px] shadow-sm rounded-lg w-full sm:w-48">
+        <select id="prod-filter" class="inp !mb-0 !py-2 !w-auto text-[11px] font-bold shadow-sm rounded-lg" onchange="rProd()"></select>
+    </div>
+</div>
                             <div class="table-wrap w-full overflow-x-auto flex-1 overflow-y-auto rounded-none border-0 custom-scroll">
                                 <table class="w-full !min-w-[800px]">
                                     <thead class="bg-slate-50 sticky top-0 z-10 shadow-sm">
@@ -1365,6 +1382,27 @@
                 toggleReg(true);
                 document.getElementById('r-role').value = 'ADMIN';
             }
+
+            // AUTO-LOGIN LOGIC (Checks persistence)
+            let session = localStorage.getItem('dap_session');
+            if(session) {
+                try {
+                    let parsed = JSON.parse(session);
+                    let acc = S.u.find(x => x.n === parsed.n && x.p === parsed.p);
+                    if(acc && acc.s === 'active') {
+                        S.curr = acc;
+                        document.getElementById('auth-layer').classList.add('hidden');
+                        document.getElementById('app-shell').classList.remove('hidden');
+                        document.getElementById('app-shell').style.display = 'flex';
+                        initNav(); initChat(); populateSandboxSelect(); checkMaintenance();
+                    } else {
+                        // Invalid token or account deactivated, flush local session
+                        localStorage.removeItem('dap_session');
+                    }
+                } catch(e) {
+                    localStorage.removeItem('dap_session');
+                }
+            }
         }
 
         // --- ALL YOUR EXACT ORIGINAL FUNCTIONS START HERE ---
@@ -1426,6 +1464,9 @@
             if(!acc) return alert('No User Found. Check Callsign/Key.');
             if(acc.s !== 'active') return alert('Access Restricted. Status: ' + acc.s.toUpperCase());
             
+            // Generate Local Session
+            localStorage.setItem('dap_session', JSON.stringify({n: acc.n, p: acc.p}));
+
             S.curr=acc;
             document.getElementById('auth-layer').classList.add('hidden');
             document.getElementById('app-shell').classList.remove('hidden');
@@ -1447,7 +1488,10 @@
             sv(); alert('Request Sent to Gatekeeper!'); toggleReg(false);
         }
         
-        function logout(){ location.reload(); }
+        function logout(){ 
+            localStorage.removeItem('dap_session');
+            location.reload(); 
+        }
 
         function toggleReg(x){
             document.getElementById('login-form').classList.toggle('hidden',x);
@@ -1686,49 +1730,49 @@
                         <div class="p-2.5 rounded-xl bg-blue-50 text-blue-500 shadow-inner"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path></svg></div>
                         <h4 class="text-[9px] text-gray-500 font-black uppercase tracking-widest leading-tight">Total<br>Doctors</h4>
                     </div>
-                    <h2 class="text-2xl font-black text-gray-800 tracking-tighter">${S.d.length}</h2>
+                    <h2 class="text-2xl font-black text-gray-800 kpi-val-blue tracking-tighter">${S.d.length}</h2>
                 </div>
                 <div class="card p-5 border border-slate-100 shadow-sm rounded-2xl bg-white flex flex-col justify-between hover:-translate-y-1 transition-transform">
                     <div class="flex items-center gap-3 mb-3">
                         <div class="p-2.5 rounded-xl bg-indigo-50 text-indigo-500 shadow-inner"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg></div>
                         <h4 class="text-[9px] text-gray-500 font-black uppercase tracking-widest leading-tight">Active<br>Doctors</h4>
                     </div>
-                    <h2 class="text-2xl font-black text-gray-800 tracking-tighter">${activeDocsCount}</h2>
+                    <h2 class="text-2xl font-black text-gray-800 kpi-val-indigo tracking-tighter">${activeDocsCount}</h2>
                 </div>
                 <div class="card p-5 border border-slate-100 shadow-sm rounded-2xl bg-white flex flex-col justify-between hover:-translate-y-1 transition-transform">
                     <div class="flex items-center gap-3 mb-3">
                         <div class="p-2.5 rounded-xl bg-cyan-50 text-cyan-500 shadow-inner"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4"></path></svg></div>
                         <h4 class="text-[9px] text-gray-500 font-black uppercase tracking-widest leading-tight">Cases<br>(Monthly)</h4>
                     </div>
-                    <h2 class="text-2xl font-black text-gray-800 tracking-tighter">${casesThisMonth.length}</h2>
+                    <h2 class="text-2xl font-black text-gray-800 kpi-val-cyan tracking-tighter">${casesThisMonth.length}</h2>
                 </div>
                 <div class="card p-5 border border-slate-100 shadow-sm rounded-2xl bg-white flex flex-col justify-between hover:-translate-y-1 transition-transform">
                     <div class="flex items-center gap-3 mb-3">
                         <div class="p-2.5 rounded-xl bg-orange-50 text-orange-500 shadow-inner"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg></div>
                         <h4 class="text-[9px] text-gray-500 font-black uppercase tracking-widest leading-tight">In<br>Production</h4>
                     </div>
-                    <h2 class="text-2xl font-black text-gray-800 tracking-tighter">${inProdCasesCount}</h2>
+                    <h2 class="text-2xl font-black text-gray-800 kpi-val-orange tracking-tighter">${inProdCasesCount}</h2>
                 </div>
                 <div class="card p-5 border border-slate-100 shadow-sm rounded-2xl bg-white flex flex-col justify-between hover:-translate-y-1 transition-transform">
                     <div class="flex items-center gap-3 mb-3">
                         <div class="p-2.5 rounded-xl bg-teal-50 text-teal-500 shadow-inner"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M9 17a2 2 0 11-4 0 2 2 0 014 0zM19 17a2 2 0 11-4 0 2 2 0 014 0z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16V6a1 1 0 00-1-1H4a1 1 0 00-1 1v10a1 1 0 001 1h1m8-1a1 1 0 01-1 1H9m4-1V8a1 1 0 011-1h2.586a1 1 0 01.707.293l3.414 3.414a1 1 0 01.293.707V16a1 1 0 01-1 1h-1m-6-1a1 1 0 001 1h1M5 17a2 2 0 104 0m-4 0a2 2 0 114 0m6 0a2 2 0 104 0m-4 0a2 2 0 114 0"></path></svg></div>
                         <h4 class="text-[9px] text-gray-500 font-black uppercase tracking-widest leading-tight">Cases<br>Delivered</h4>
                     </div>
-                    <h2 class="text-2xl font-black text-gray-800 tracking-tighter">${deliveredCasesCount}</h2>
+                    <h2 class="text-2xl font-black text-gray-800 kpi-val-teal tracking-tighter">${deliveredCasesCount}</h2>
                 </div>
                 <div class="card p-5 border border-emerald-100 shadow-md rounded-2xl bg-gradient-to-br from-emerald-50 to-white flex flex-col justify-between hover:-translate-y-1 transition-transform">
                     <div class="flex items-center gap-3 mb-3">
                         <div class="p-2.5 rounded-xl bg-emerald-100 text-emerald-600 shadow-inner"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg></div>
                         <h4 class="text-[9px] text-emerald-800 font-black uppercase tracking-widest leading-tight">Monthly<br>Sales</h4>
                     </div>
-                    <h2 class="text-xl sm:text-2xl font-black text-emerald-500 tracking-tighter">₱${salesThisMonth.toLocaleString(undefined, {minimumFractionDigits:0})}</h2>
+                    <h2 class="text-xl sm:text-2xl font-black text-emerald-500 tracking-tighter kpi-val-emerald">₱${salesThisMonth.toLocaleString(undefined, {minimumFractionDigits:0})}</h2>
                 </div>
                 <div class="card p-5 border border-rose-100 shadow-md rounded-2xl bg-gradient-to-br from-rose-50 to-white flex flex-col justify-between hover:-translate-y-1 transition-transform">
                     <div class="flex items-center gap-3 mb-3">
                         <div class="p-2.5 rounded-xl bg-rose-100 text-rose-600 shadow-inner"><svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg></div>
                         <h4 class="text-[9px] text-rose-800 font-black uppercase tracking-widest leading-tight">Total<br>Outstanding</h4>
                     </div>
-                    <h2 class="text-xl sm:text-2xl font-black text-rose-500 tracking-tighter">₱${totalOutBal.toLocaleString(undefined, {minimumFractionDigits:0})}</h2>
+                    <h2 class="text-xl sm:text-2xl font-black text-rose-500 tracking-tighter kpi-val-rose">₱${totalOutBal.toLocaleString(undefined, {minimumFractionDigits:0})}</h2>
                 </div>
             `;
 
@@ -2085,32 +2129,33 @@
             document.getElementById('mod-doc').classList.add('active');
         }
 
-        function rAcc() {
+       function rAcc() {
             let inProdCases = S.o.filter(x => x.st === 'In Production' || x.st === 'IN PRODUCTION').length;
             let discountedCases = S.o.filter(x => x.v && x.v !== 'NONE').length;
             
             let accStatsHtml = `
                 <div class="card p-5 border-0 shadow-sm rounded-2xl flex flex-col justify-between bg-white border-l-4 border-l-blue-500">
                     <h4 class="text-[10px] text-gray-500 font-bold uppercase tracking-widest leading-tight mb-2">Total Clients</h4>
-                    <h2 class="text-3xl font-black text-gray-800">${S.d.length}</h2>
+                    <h2 class="text-3xl font-black text-gray-800 kpi-val-blue">${S.d.length}</h2>
                 </div>
                 <div class="card p-5 border-0 shadow-sm rounded-2xl flex flex-col justify-between bg-white border-l-4 border-l-orange-500">
                     <h4 class="text-[10px] text-gray-500 font-bold uppercase tracking-widest leading-tight mb-2">Total Cases</h4>
-                    <h2 class="text-3xl font-black text-gray-800">${S.o.length}</h2>
+                    <h2 class="text-3xl font-black text-gray-800 kpi-val-orange">${S.o.length}</h2>
                 </div>
                 <div class="card p-5 border-0 shadow-sm rounded-2xl flex flex-col justify-between bg-white border-l-4 border-l-purple-500">
                     <h4 class="text-[10px] text-gray-500 font-bold uppercase tracking-widest leading-tight mb-2">WIP (In Prod)</h4>
-                    <h2 class="text-3xl font-black text-gray-800">${inProdCases}</h2>
+                    <h2 class="text-3xl font-black text-gray-800 kpi-val-purple">${inProdCases}</h2>
                 </div>
                 <div class="card p-5 border-0 shadow-sm rounded-2xl flex flex-col justify-between bg-white border-l-4 border-l-emerald-500">
                     <h4 class="text-[10px] text-gray-500 font-bold uppercase tracking-widest leading-tight mb-2">Discounted Volume</h4>
-                    <h2 class="text-3xl font-black text-gray-800">${discountedCases}</h2>
+                    <h2 class="text-3xl font-black text-gray-800 kpi-val-emerald">${discountedCases}</h2>
                 </div>
             `;
             let accContainer = document.getElementById('acc-stats-grid');
             if(accContainer) accContainer.innerHTML = accStatsHtml;
 
             let filter = document.getElementById('acc-filter').value;
+            let sq = document.getElementById('acc-search')?.value.toUpperCase() || ''; // SEARCH LOGIC
             let tbody = document.getElementById('b-receivables');
             
             let rows = S.o.map((x, i) => {
@@ -2121,6 +2166,9 @@
                 let currentStatus = x.manualPayStatus ? x.manualPayStatus : (bal <= 0 ? 'FULLY PAID' : (paid > 0 ? 'PARTIAL PAYMENT' : 'UNPAID'));
 
                 if(filter === 'UNPAID' && (currentStatus === 'FULLY PAID' || currentStatus === 'PAID')) return '';
+                
+                // SEARCH FILTER CONDITION
+                if(sq && !x.id.includes(sq) && !(x.doc || '').toUpperCase().includes(sq)) return '';
 
                 let statusBadgeClass = 'bg-slate-100 text-slate-800 border-slate-200';
                 if (currentStatus === 'FULLY PAID') statusBadgeClass = 'bg-emerald-100 text-emerald-800 border-emerald-200';
@@ -2141,7 +2189,7 @@
                 </tr>`;
             }).join('');
             
-            if(tbody) tbody.innerHTML = rows || `<tr><td colspan="7" class="text-center p-8 text-slate-400 font-black tracking-widest uppercase text-[10px]">No ledger data found for this filter.</td></tr>`;
+            if(tbody) tbody.innerHTML = rows || `<tr><td colspan="7" class="text-center p-8 text-slate-400 font-black tracking-widest uppercase text-[10px]">No ledger data found for this filter/search.</td></tr>`;
 
             let bAcct = document.getElementById('b-acct');
             if(bAcct) {
@@ -2701,15 +2749,106 @@
             calcPrice();
         }
 
+        // REWRITTEN HIGHLY PROFESSIONAL THERMAL RECEIPT GENERATOR
         function thermal(i){
-            const { jsPDF } = window.jspdf; let o = S.o[i];
-            let doc = new jsPDF({ unit: 'mm', format: [58, 100] });
-            doc.setFontSize(10); doc.text("DAP HUB RECEIPT", 29, 8, {align:'center'});
-            doc.setFontSize(7); doc.text(`CASE: ${o.id}`, 5, 15);
-            doc.text(`PATIENT: ${o.pat}`, 5, 20);
-            doc.text(`DATE: ${o.date ? o.date.split('T')[0] : ''}`, 5, 25);
-            doc.text(`ITEMS: ${(o.prods||[]).join(',').substring(0,30)}`, 5, 30);
-            doc.setFontSize(9); doc.text(`TOTAL: PHP ${o.tot}`, 5, 40);
+            const { jsPDF } = window.jspdf; 
+            let o = S.o[i];
+            
+            // Standard 80mm thermal paper width. Height auto-adjusts roughly based on content.
+            let doc = new jsPDF({ unit: 'mm', format: [80, 160] }); 
+            
+            let y = 10;
+            const centerX = 40; // Center of 80mm width
+            const lineDash = "------------------------------------------------------------------";
+
+            // Header Section
+            doc.setFont("helvetica", "bold");
+            doc.setFontSize(14);
+            doc.text("DAP HUB", centerX, y, {align:'center'});
+            
+            y += 5;
+            doc.setFontSize(9);
+            doc.setFont("helvetica", "normal");
+            doc.text("Dental Assist PH", centerX, y, {align:'center'});
+            
+            y += 4;
+            doc.setFontSize(8);
+            doc.text("Quezon City, Metro Manila", centerX, y, {align:'center'});
+            
+            y += 4;
+            doc.text("Contact: support@daphub.com", centerX, y, {align:'center'});
+
+            y += 6;
+            doc.setFontSize(8);
+            doc.text(lineDash, centerX, y, {align:'center'});
+
+            // Meta Data Section
+            y += 6;
+            doc.setFont("helvetica", "bold");
+            doc.text("CASE NO: " + o.id, 5, y);
+            
+            y += 5;
+            doc.setFont("helvetica", "normal");
+            doc.text("Date: " + (o.date ? o.date.split('T')[0] : 'N/A'), 5, y);
+            
+            y += 5;
+            doc.text("Status: " + (o.st ? o.st.toUpperCase() : 'N/A'), 5, y);
+            
+            y += 5;
+            doc.text("Client: " + (o.doc || 'N/A'), 5, y);
+            
+            y += 5;
+            doc.text("Patient: " + o.pat, 5, y);
+
+            y += 6;
+            doc.text(lineDash, centerX, y, {align:'center'});
+
+            // Order Specifications
+            y += 6;
+            doc.setFont("helvetica", "bold");
+            doc.text("ORDER SPECIFICATIONS", 5, y);
+            
+            y += 5;
+            doc.setFont("helvetica", "normal");
+            
+            let prods = o.prods || [];
+            if(prods.length > 0) {
+                for(let p of prods) {
+                    // Split long product names to avoid cutoff
+                    let splitText = doc.splitTextToSize("- " + p, 70);
+                    doc.text(splitText, 5, y);
+                    y += (4 * splitText.length);
+                }
+            } else {
+                doc.text("- No spec listed", 5, y);
+                y += 4;
+            }
+            
+            y += 2;
+            doc.text("Quantity: " + (o.qty || 1), 5, y);
+            y += 4;
+            doc.text("Shade: " + (o.shade || 'N/A'), 5, y);
+
+            y += 6;
+            doc.text(lineDash, centerX, y, {align:'center'});
+
+            // Financials
+            y += 6;
+            doc.setFontSize(11);
+            doc.setFont("helvetica", "bold");
+            doc.text("TOTAL AMOUNT:", 5, y);
+            doc.text("PHP " + o.tot, 75, y, {align:'right'});
+
+            // Footer
+            y += 12;
+            doc.setFontSize(8);
+            doc.setFont("helvetica", "normal");
+            doc.text("This document is a system-generated stub.", centerX, y, {align:'center'});
+            
+            y += 4;
+            doc.setFont("helvetica", "italic");
+            doc.text("Thank you for trusting DAP HUB.", centerX, y, {align:'center'});
+
             doc.save(`Receipt_${o.id}.pdf`);
         }
 
@@ -2931,12 +3070,16 @@
             }
         }
 
-        function rProd() {
+       function rProd() {
             let filterVal = document.getElementById('prod-filter')?.value || 'ALL';
+            let sq = document.getElementById('prod-search')?.value.toUpperCase() || ''; // SEARCH LOGIC
             let prodHtml = '';
 
             S.o.forEach((x, i) => {
                 if (filterVal !== 'ALL' && x.st !== filterVal) return;
+                
+                // SEARCH FILTER CONDITION
+                if(sq && !x.id.includes(sq) && !(x.doc || '').toUpperCase().includes(sq) && !(x.asn || '').toUpperCase().includes(sq)) return;
 
                 let isActive = selectedProdIdx === i ? 'pay-row-active shadow-inner bg-slate-50' : 'cursor-pointer hover:bg-slate-50/80 transition-colors border-l-4 border-l-transparent';
                 if (selectedProdIdx === i) isActive += ' border-l-4 border-l-blue-500';
@@ -2971,7 +3114,7 @@
             });
 
             let tbody = document.getElementById('b-prod');
-            if (tbody) tbody.innerHTML = prodHtml || `<tr><td colspan="7" class="text-center p-8 text-slate-400 font-black uppercase tracking-widest text-[10px]">NO TICKETS DETECTED FOR "${filterVal}"</td></tr>`;
+            if (tbody) tbody.innerHTML = prodHtml || `<tr><td colspan="7" class="text-center p-8 text-slate-400 font-black uppercase tracking-widest text-[10px]">NO TICKETS DETECTED FOR "${filterVal}" OR SEARCH</td></tr>`;
 
             renderProdDetails();
         }
@@ -3401,6 +3544,10 @@
             }
 
             sv();
+            
+            // Update Local Session on Name/Pass Change
+            localStorage.setItem('dap_session', JSON.stringify({n: S.curr.n, p: S.curr.p}));
+
             alert('Personal identity matrix updated. Your new credentials are now active.');
             initChat();
         }
