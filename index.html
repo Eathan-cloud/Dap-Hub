@@ -1285,10 +1285,14 @@
         window.isSavingOrder = false;
         window.isEditingProd = false;
         window.isSyncing = false;
+        window.lastSaveTime = 0; 
 
         // --- MULTI-USER SUPABASE SAVE FUNCTION (SMART MERGE WITH DELETE SUPPORT) ---
-        async function sv(targetKey = null) {
+       async function sv(targetKey = null) {
+            window.isSavingOrder = true;
+            window.lastSaveTime = Date.now(); 
             window.isSyncing = true;
+            
             let btn = document.getElementById('sync-indicator');
             if(!btn) {
                 btn = document.createElement('div');
@@ -1301,7 +1305,8 @@
             const keys = targetKey ? [targetKey] : Object.keys(S).filter(k => k !== 'curr');
             
             for (let k of keys) {
-                if (Array.isArray(S[k]) && k !== 'trash' && k !== 'msg') {
+                // FIX: Exclude 'techs' from merging so it completely OVERWRITES the cloud data.
+                if (Array.isArray(S[k]) && k !== 'trash' && k !== 'msg' && k !== 'techs') {
                     const { data } = await _supabase.from('dap_store').select('data').eq('id', 'dap_v4_' + k).single();
                     let cloudArray = data ? data.data : [];
                     
@@ -1331,12 +1336,17 @@
                     S[k] = merged; 
                     await _supabase.from('dap_store').upsert({ id: 'dap_v4_' + k, data: merged });
                 } else {
+                    // This triggers for 'techs' now. It overwrites the database completely. No ghosting.
                     await _supabase.from('dap_store').upsert({ id: 'dap_v4_' + k, data: S[k] });
                 }
             }
             
             if(document.getElementById('sync-indicator')) document.getElementById('sync-indicator').remove();
-            window.isSyncing = false;
+            
+            setTimeout(() => { 
+                window.isSavingOrder = false; 
+                window.isSyncing = false; 
+            }, 3000); 
         }
       // --- ASYNC BOOTLOADER (ZERO-FLASH VERSION) ---
         async function initApp() {
@@ -1740,33 +1750,35 @@
             }
         }
 
-        function del(k,i,e){
+       async function del(k,i,e){
             if(e) e.stopPropagation();
-            if(confirm('Delete? This will move to the Architect Recycle Bin.')){
-                let item;
-                if(k==='d') { item = S.d.splice(i,1)[0]; }
-                else if(k==='o') { 
-                    item = S.o.splice(i,1)[0]; 
-                    window.isEditingProd = false;
-                    selectedProdIdx = -1;
-                }
-                else if(k==='v') { item = S.v.splice(i,1)[0]; }
-                else if(k==='u') {
-                    let idx = S.u.findIndex(x=>x.n===i);
-                    item = S.u.splice(idx, 1)[0];
-                }
-                S.trash.push({ k, item, ts: new Date().toLocaleString() });
-                sv(); // Fully sync local array & trash up to cloud
-                
-                if(document.querySelector('.page.active').id === 'p-architect') rTrash();
-                
-                if(k==='d') rDocs();
-                if(k==='o') { rOrd(); rProd(); if(typeof rAcc === 'function') rAcc(); dash(); }
-                if(k==='v') rDisc();
-                if(k==='u') rUsers();
-            }
-        }
+            
+            // NO CONFIRM POP-UP. INSTANT DELETE.
+            window.isSavingOrder = true;
+            window.lastSaveTime = Date.now();
 
+            let item;
+            if(k==='d') { item = S.d.splice(i,1)[0]; }
+            else if(k==='o') { 
+                item = S.o.splice(i,1)[0]; 
+                window.isEditingProd = false;
+                selectedProdIdx = -1;
+            }
+            else if(k==='v') { item = S.v.splice(i,1)[0]; }
+            else if(k==='u') {
+                let idx = S.u.findIndex(x=>x.n===i);
+                item = S.u.splice(idx, 1)[0];
+            }
+            S.trash.push({ k, item, ts: new Date().toLocaleString() });
+            
+            await sv(); // FORCE SYSTEM TO WAIT FOR UPLOAD
+            
+            if(document.querySelector('.page.active').id === 'p-architect') rTrash();
+            if(k==='d') rDocs();
+            if(k==='o') { rOrd(); rProd(); if(typeof rAcc === 'function') rAcc(); dash(); }
+            if(k==='v') rDisc();
+            if(k==='u') rUsers();
+        }
         function dash() {
             let now = new Date();
             let currMonth = now.getMonth();
@@ -2367,17 +2379,63 @@
             }
         }
 
-        function delPayment(caseIdx, payIdx) {
-            if(confirm("Delete this payment record? This will move to the Architect Recycle Bin.")) {
-                let p = S.o[caseIdx].payments[payIdx];
-                S.o[caseIdx].amtPaid -= p.amt;
-                let removed = S.o[caseIdx].payments.splice(payIdx, 1)[0];
-                S.trash.push({ k: 'payment', item: removed, caseId: S.o[caseIdx].id, ts: new Date().toLocaleString() });
-                sv();
-                rAcc();
-            }
+        async function delPayment(caseIdx, payIdx) {
+            // NO CONFIRM POP-UP. INSTANT SILENT DELETE.
+            
+            // 1. ENGAGE LOCKS
+            window.isSavingOrder = true;
+            window.isSyncing = true;
+            window.lastSaveTime = Date.now();
+
+            let p = S.o[caseIdx].payments[payIdx];
+            S.o[caseIdx].amtPaid -= p.amt;
+            let removed = S.o[caseIdx].payments.splice(payIdx, 1)[0];
+            
+            S.trash.push({ k: 'payment', item: removed, caseId: S.o[caseIdx].id, ts: new Date().toLocaleString() });
+            
+            // 2. WAIT FOR CLOUD
+            await sv('o');
+            await sv('trash');
+
+            // 3. RENEW LOCK & UPDATE UI
+            window.lastSaveTime = Date.now();
+            rAcc();
+            
+            // 4. HOLD SHIELD
+            setTimeout(() => { 
+                window.isSavingOrder = false; 
+                window.isSyncing = false;
+            }, 4000);
         }
 
+        async function saveProdDetails() {
+            if (selectedProdIdx === -1 || !S.o[selectedProdIdx]) return;
+            
+            window.isSavingOrder = true;
+            window.lastSaveTime = Date.now();
+
+            let x = S.o[selectedProdIdx];
+            
+            x.st = document.getElementById('pd-st').value;
+            x.rem = document.getElementById('pd-rem').value;
+            x.asn = document.getElementById('pd-asn').value;
+            x.age = document.getElementById('pd-age').value;
+
+            let newComp = document.getElementById('pd-comp').value;
+            if(newComp) x.comp = newComp.includes('T') ? newComp : newComp + 'T12:00';
+            else x.comp = "";
+
+            window.isEditingProd = false; // Release sync lock
+
+            await sv(); // WAIT FOR UPLOAD
+            
+            rProd(); dash(); if(typeof rAcc === 'function') rAcc();
+            
+            if (document.getElementById('p-calendar').classList.contains('active')) {
+                initFullCal();
+            }
+            alert("Workflow Ticket Updated and Synced.");
+        }
         function viewPayment(caseIdx, payIdx) {
             let p = S.o[caseIdx].payments[payIdx];
             let x = S.o[caseIdx];
@@ -2475,10 +2533,15 @@
             document.getElementById('pay-bal').innerText = remaining.toLocaleString();
         }
 
-        function savePayment() {
+        async function savePayment() {
             if(currentPayCaseIdx === -1) return;
             let amt = parseFloat(document.getElementById('pay-amt').value);
             if(!amt || amt <= 0) return alert("System requires a valid numeric value.");
+
+            // 1. ENGAGE ABSOLUTE LOCKS
+            window.isSavingOrder = true;
+            window.isSyncing = true;
+            window.lastSaveTime = Date.now();
 
             let pDate = document.getElementById('pay-date').value;
             let pMethod = document.getElementById('pay-method').value;
@@ -2492,14 +2555,25 @@
             
             x.payments.push({ date: pDate, amt: amt, method: pMethod, staff: pStaff, or: pOr, proof: pProof, cheque: pCheque });
             x.amtPaid = (x.amtPaid || 0) + amt;
-            
             x.manualPayStatus = null;
 
-            sv();
+            // 2. WAIT FOR CLOUD TO SAVE
+            await sv('o');
+            
+            // 3. RENEW THE LOCK SO HEARTBEAT DOES NOT OVERWRITE SCREEN
+            window.lastSaveTime = Date.now();
+
+            // 4. UPDATE UI INSTANTLY
             rAcc();
             dash();
             closeModals();
             alert("Funds Authorized and Logged.");
+
+            // 5. KEEP SHIELD UP FOR 4 SECONDS
+            setTimeout(() => {
+                window.isSavingOrder = false;
+                window.isSyncing = false;
+            }, 4000);
         }
 
         function hideClinicSupportFields(hide) {
@@ -3165,17 +3239,65 @@
             }
         }
 
-        function addTech() {
+        async function addTech() {
             let newTech = prompt("Enter new Technician Name:");
             if (newTech && newTech.trim() !== "") {
                 newTech = newTech.trim().toUpperCase();
                 if (!S.techs.includes(newTech)) {
+                    // ENGAGE SHIELD
+                    window.isSavingOrder = true;
+                    window.isSyncing = true;
+                    window.lastSaveTime = Date.now();
+
                     S.techs.push(newTech);
-                    sv();
+                    
+                    // WAIT FOR CLOUD
+                    await sv('techs');
+                    
+                    window.lastSaveTime = Date.now();
                     rProd();
+                    if (selectedProdIdx !== -1) renderProdDetails();
+
+                    setTimeout(() => {
+                        window.isSavingOrder = false;
+                        window.isSyncing = false;
+                    }, 4000);
                 } else {
                     alert("Technician already exists.");
                 }
+            }
+        }
+        // NEW: Function to delete a custom technician
+        async function delTech(techName) {
+            if (!techName || techName.trim() === "") return alert("Please select a technician from the dropdown first to delete them.");
+            
+            if (S.u.find(u => u.n === techName)) return alert("Protocol Denial: You cannot delete a registered Staff/User here. Go to Gatekeeper Protocol to manage users.");
+            if (!S.techs.includes(techName)) return alert("Technician not found in the custom list.");
+
+            if (confirm(`Are you sure you want to permanently delete Technician: ${techName}?`)) {
+                // 1. ENGAGE SHIELD LOCKS
+                window.isSavingOrder = true;
+                window.isSyncing = true;
+                window.lastSaveTime = Date.now();
+
+                // 2. Remove the tech from the local array
+                S.techs = S.techs.filter(t => t !== techName);
+                
+                // 3. WAIT FOR CLOUD OVERWRITE
+                await sv('techs');
+                
+                // 4. RENEW LOCK & UPDATE UI
+                window.lastSaveTime = Date.now();
+                rProd();
+                if (selectedProdIdx !== -1) renderProdDetails();
+
+                // 5. KEEP SHIELD UP FOR 4 SECONDS
+                setTimeout(() => {
+                    window.isSavingOrder = false;
+                    window.isSyncing = false;
+                }, 4000);
+                
+                alert(`Technician ${techName} has been purged from the system.`);
             }
         }
 
@@ -3186,7 +3308,7 @@
             }
         }
 
-       function rProd() {
+      function rProd() {
             let filterVal = document.getElementById('prod-filter')?.value || 'ALL';
             let sq = document.getElementById('prod-search')?.value.toUpperCase() || ''; 
             let prodHtml = '';
@@ -3194,6 +3316,7 @@
             S.o.forEach((x, i) => {
                 if (filterVal !== 'ALL' && x.st !== filterVal) return;
                 
+                // SEARCH FILTER CONDITION
                 if(sq && !x.id.includes(sq) && !(x.doc || '').toUpperCase().includes(sq) && !(x.asn || '').toUpperCase().includes(sq)) return;
 
                 let isActive = selectedProdIdx === i ? 'pay-row-active shadow-inner bg-slate-50' : 'cursor-pointer hover:bg-slate-50/80 transition-colors border-l-4 border-l-transparent';
@@ -3218,10 +3341,11 @@
                         <td class="font-bold text-slate-500 text-[11px]">${x.comp ? x.comp.split('T')[0] : '-'}</td>
                         <td onclick="event.stopPropagation()">
                             <div class="flex items-center gap-1">
-                                <select class="inp !py-1 !px-2 !text-[9px] font-bold w-28 uppercase" onchange="updateTech(${i}, this.value)">
+                                <select id="tech-sel-${i}" class="inp !py-1 !px-2 !text-[9px] font-bold w-28 uppercase" onchange="updateTech(${i}, this.value)">
                                     ${techOptsHtml}
                                 </select>
                                 <button onclick="addTech()" class="btn btn-blue !p-1 shadow-sm" title="Add New Tech">+</button>
+                                <button onclick="delTech(document.getElementById('tech-sel-${i}').value)" class="btn btn-red !p-1 shadow-sm" title="Delete Selected Tech">X</button>
                             </div>
                         </td>
                     </tr>
@@ -3327,6 +3451,7 @@
                                 <div class="w-2/3 flex gap-2">
                                     <select id="pd-asn" class="inp !py-3 font-black text-purple-700 pd-editable bg-purple-50/50 shadow-sm border-purple-200" ${disabledState}>${techOpts}</select>
                                     <button onclick="addTech()" class="btn btn-blue !p-3 shadow-sm pd-editable" ${disabledState} title="Add New Tech">+</button>
+                                    <button onclick="delTech(document.getElementById('pd-asn').value)" class="btn btn-red !p-3 shadow-sm pd-editable" ${disabledState} title="Delete Selected Tech">X</button>
                                 </div>
                             </div>
                             <div class="flex items-center mt-2">
@@ -3347,7 +3472,6 @@
                 </div>
             `;
         }
-
         function editProdDetails() {
             window.isEditingProd = true; // Lock Sync
             renderProdDetails();
@@ -4212,7 +4336,10 @@
 
         // --- MASTER GLOBAL LIVE SYNC (Total System Pulse - 3 Sec Rule) ---
         async function syncGlobalLive() {
-            if (!S.curr || window.isSavingOrder || window.isEditingProd || window.isSyncing) return; 
+            window.lastSaveTime = window.lastSaveTime || 0;
+            
+            // SHIELD CHECK 1: Before downloading
+            if (!S.curr || window.isSavingOrder || window.isEditingProd || window.isSyncing || (Date.now() - window.lastSaveTime < 5000)) return; 
 
             try {
                 const { data: ordRes } = await _supabase.from('dap_store').select('data').eq('id', 'dap_v4_o').single();
@@ -4220,6 +4347,12 @@
                 const { data: docRes } = await _supabase.from('dap_store').select('data').eq('id', 'dap_v4_d').single();
                 const { data: vRes } = await _supabase.from('dap_store').select('data').eq('id', 'dap_v4_v').single();
                 const { data: prRes } = await _supabase.from('dap_store').select('data').eq('id', 'dap_v4_pr').single();
+
+                // SHIELD CHECK 2 (CRITICAL FIX): After downloading!
+                // If you clicked "Save" while Supabase was fetching this data, ABORT and throw the old data away.
+                if (window.isSavingOrder || window.isEditingProd || window.isSyncing || (Date.now() - window.lastSaveTime < 5000)) {
+                    return; 
+                }
 
                 let needsRefresh = false;
 
@@ -4246,23 +4379,18 @@
                 }
 
                 if (needsRefresh) {
-                    console.log("Cloud update detected. Synchronizing modules...");
                     if(typeof rOrd === 'function') rOrd(); 
                     if(typeof dash === 'function') dash(); 
                     if(typeof rAcc === 'function') rAcc(); 
                     if(typeof rDocs === 'function') rDocs();
                     if(typeof rProd === 'function') rProd();
-                    
                     if(typeof rSales === 'function' && document.getElementById('p-sales').classList.contains('active')) rSales();
                     if(typeof rMaintenance === 'function' && document.getElementById('p-maintenance').classList.contains('active')) rMaintenance();
                     if(typeof initFullCal === 'function' && document.getElementById('p-calendar').classList.contains('active')) initFullCal();
                 }
 
-            } catch(e) {
-                console.warn("Live heartbeat skipped: Network busy.");
-            }
+            } catch(e) { }
         }
-
         setInterval(syncGlobalLive, 3000);
         initApp();
     </script>
