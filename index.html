@@ -1281,8 +1281,14 @@
             msg: [], curr: null
         };
 
+        // NEW GLOBAL SYNC LOCKS
+        window.isSavingOrder = false;
+        window.isEditingProd = false;
+        window.isSyncing = false;
+
         // --- MULTI-USER SUPABASE SAVE FUNCTION (SMART MERGE WITH DELETE SUPPORT) ---
         async function sv(targetKey = null) {
+            window.isSyncing = true;
             let btn = document.getElementById('sync-indicator');
             if(!btn) {
                 btn = document.createElement('div');
@@ -1292,7 +1298,6 @@
                 document.body.appendChild(btn);
             }
 
-            // If targetKey is passed, ONLY sync that specific module to make it lightning fast
             const keys = targetKey ? [targetKey] : Object.keys(S).filter(k => k !== 'curr');
             
             for (let k of keys) {
@@ -1302,7 +1307,11 @@
                     
                     let merged = [...cloudArray];
 
-                    let trashedIds = S.trash.filter(t => t.k === k).map(t => t.item && (t.item.id || t.item.n || t.item.c)).filter(Boolean);
+                    let trashedIds = S.trash.filter(t => t.k === k).map(t => {
+                        if(!t.item) return null;
+                        return t.item.id || t.item.n || t.item.c;
+                    }).filter(Boolean);
+                    
                     merged = merged.filter(cItem => {
                         let cKey = cItem.id || cItem.n || cItem.c;
                         return !(cKey && trashedIds.includes(cKey));
@@ -1327,6 +1336,7 @@
             }
             
             if(document.getElementById('sync-indicator')) document.getElementById('sync-indicator').remove();
+            window.isSyncing = false;
         }
       // --- ASYNC BOOTLOADER (ZERO-FLASH VERSION) ---
         async function initApp() {
@@ -1499,7 +1509,7 @@
         }
 
         setInterval(checkMaintenance, 3000);
-       function login(){
+        function login(){
             let u=document.getElementById('l-user').value.toUpperCase();
             let p=document.getElementById('l-pass').value;
             
@@ -1634,7 +1644,7 @@
             if(id==='sales') rSales();
             if(id==='maintenance') rMaintenance();
             if(id==='clinic_support') { selectedClinicSupportIdx = -1; switchCSTab('cases'); rOrd(); rDocs(); }
-            if(id==='production') { selectedProdIdx = -1; rProd(); }
+            if(id==='production') { window.isEditingProd = false; selectedProdIdx = -1; rProd(); }
             if(id==='accounting') { rAcc(); renderCatalog(); rDisc(); }
             if(id==='users') rUsers();
             if(id==='calendar') { setTimeout(() => initFullCal(), 100); }
@@ -1735,14 +1745,18 @@
             if(confirm('Delete? This will move to the Architect Recycle Bin.')){
                 let item;
                 if(k==='d') { item = S.d.splice(i,1)[0]; }
-                else if(k==='o') { item = S.o.splice(i,1)[0]; }
+                else if(k==='o') { 
+                    item = S.o.splice(i,1)[0]; 
+                    window.isEditingProd = false;
+                    selectedProdIdx = -1;
+                }
                 else if(k==='v') { item = S.v.splice(i,1)[0]; }
                 else if(k==='u') {
                     let idx = S.u.findIndex(x=>x.n===i);
                     item = S.u.splice(idx, 1)[0];
                 }
                 S.trash.push({ k, item, ts: new Date().toLocaleString() });
-                sv();
+                sv(); // Fully sync local array & trash up to cloud
                 
                 if(document.querySelector('.page.active').id === 'p-architect') rTrash();
                 
@@ -2698,10 +2712,7 @@
             alert('Clinic Support Details Saved!');
         }
 
-        window.isSavingOrder = false; // Global physical lock
-
         async function saveOrd() {
-            // Reject click immediately if already saving
             if (window.isSavingOrder) return;
             
             let reqFields = ['o-pat', 'o-doc', 'o-date', 'o-qty'];
@@ -2720,7 +2731,6 @@
             document.querySelectorAll('.ochk:checked').forEach(c => prs.push(c.value));
             if (prs.length === 0) { alert("Protocol Error: At least one product spec is required!"); return false; }
 
-            // ENGAGE PHYSICAL LOCK
             window.isSavingOrder = true;
             let allBtns = document.querySelectorAll('#mod-ord button');
             allBtns.forEach(b => { 
@@ -2768,25 +2778,20 @@
                 };
 
                 if (i === "") {
-                    // NEW ORDER: Fast Atomic Sync to guarantee sequential numbers
-                    // 1. Instantly fetch the live data from cloud
                     const { data } = await _supabase.from('dap_store').select('data').eq('id', 'dap_v4_o').single();
                     let liveOrders = data ? data.data : [...S.o];
                     
-                    // 2. Generate perfect sequential ID based on LIVE cloud data
                     let t = document.getElementById('o-ctype').value;
                     let realCount = liveOrders.filter(x => x.id && x.id.startsWith(t)).length;
                     obj.id = `${t}0${1655 + realCount}`;
                     
-                    // 3. Push and instantly upload ONLY the orders table
                     liveOrders.push(obj);
                     await _supabase.from('dap_store').upsert({ id: 'dap_v4_o', data: liveOrders });
-                    S.o = liveOrders; // Sync local state
+                    S.o = liveOrders; 
                 } else {
-                    // EDIT EXISTING ORDER
                     obj.id = document.getElementById('o-id').value;
                     S.o[i] = Object.assign(S.o[i], obj);
-                    await sv('o'); // Fast targeted sync
+                    await sv('o'); 
                 }
                 
                 rOrd(); rProd(); dash(); if(typeof rAcc === 'function') rAcc();
@@ -2794,14 +2799,9 @@
                     initFullCal();
                 }
                 
-                // FIRE ALERT WHILE MODAL IS STILL OPEN
                 setTimeout(() => {
                     alert("JOB ORDER COMMITTED TO SYSTEM.");
-                    
-                    // CLOSE MODAL ONLY AFTER CLICKING 'OK' ON ALERT
                     closeModals();
-                    
-                    // Release locks
                     window.isSavingOrder = false;
                     allBtns.forEach(b => { b.disabled = false; b.style.pointerEvents = 'auto'; b.style.opacity = '1'; });
                 }, 50);
@@ -2813,6 +2813,7 @@
                 allBtns.forEach(b => { b.disabled = false; b.style.pointerEvents = 'auto'; b.style.opacity = '1'; });
             }
         }
+
         function editOrd(i) {
             let x = S.o[i]; modal('ord');
             hideClinicSupportFields(false);
@@ -2872,19 +2873,16 @@
             calcPrice();
         }
 
-        // REWRITTEN HIGHLY PROFESSIONAL THERMAL RECEIPT GENERATOR
         function thermal(i){
             const { jsPDF } = window.jspdf; 
             let o = S.o[i];
             
-            // Standard 80mm thermal paper width. Height auto-adjusts roughly based on content.
             let doc = new jsPDF({ unit: 'mm', format: [80, 160] }); 
             
             let y = 10;
-            const centerX = 40; // Center of 80mm width
+            const centerX = 40; 
             const lineDash = "------------------------------------------------------------------";
 
-            // Header Section
             doc.setFont("helvetica", "bold");
             doc.setFontSize(14);
             doc.text("DAP HUB", centerX, y, {align:'center'});
@@ -2905,7 +2903,6 @@
             doc.setFontSize(8);
             doc.text(lineDash, centerX, y, {align:'center'});
 
-            // Meta Data Section
             y += 6;
             doc.setFont("helvetica", "bold");
             doc.text("CASE NO: " + o.id, 5, y);
@@ -2926,7 +2923,6 @@
             y += 6;
             doc.text(lineDash, centerX, y, {align:'center'});
 
-            // Order Specifications
             y += 6;
             doc.setFont("helvetica", "bold");
             doc.text("ORDER SPECIFICATIONS", 5, y);
@@ -2937,7 +2933,6 @@
             let prods = o.prods || [];
             if(prods.length > 0) {
                 for(let p of prods) {
-                    // Split long product names to avoid cutoff
                     let splitText = doc.splitTextToSize("- " + p, 70);
                     doc.text(splitText, 5, y);
                     y += (4 * splitText.length);
@@ -2955,14 +2950,12 @@
             y += 6;
             doc.text(lineDash, centerX, y, {align:'center'});
 
-            // Financials
             y += 6;
             doc.setFontSize(11);
             doc.setFont("helvetica", "bold");
             doc.text("TOTAL AMOUNT:", 5, y);
             doc.text("PHP " + o.tot, 75, y, {align:'right'});
 
-            // Footer
             y += 12;
             doc.setFontSize(8);
             doc.setFont("helvetica", "normal");
@@ -3195,13 +3188,12 @@
 
        function rProd() {
             let filterVal = document.getElementById('prod-filter')?.value || 'ALL';
-            let sq = document.getElementById('prod-search')?.value.toUpperCase() || ''; // SEARCH LOGIC
+            let sq = document.getElementById('prod-search')?.value.toUpperCase() || ''; 
             let prodHtml = '';
 
             S.o.forEach((x, i) => {
                 if (filterVal !== 'ALL' && x.st !== filterVal) return;
                 
-                // SEARCH FILTER CONDITION
                 if(sq && !x.id.includes(sq) && !(x.doc || '').toUpperCase().includes(sq) && !(x.asn || '').toUpperCase().includes(sq)) return;
 
                 let isActive = selectedProdIdx === i ? 'pay-row-active shadow-inner bg-slate-50' : 'cursor-pointer hover:bg-slate-50/80 transition-colors border-l-4 border-l-transparent';
@@ -3244,6 +3236,7 @@
 
         function selectProdRecord(i) {
             selectedProdIdx = i;
+            window.isEditingProd = false; // Reset lock when switching
             rProd();
         }
 
@@ -3271,6 +3264,9 @@
             
             let sexOpts = `<option value="">--</option><option value="M" ${x.sex === 'M' ? 'selected' : ''}>MALE</option><option value="F" ${x.sex === 'F' ? 'selected' : ''}>FEMALE</option>`;
 
+            let disabledState = window.isEditingProd ? '' : 'disabled';
+            let saveBtnClass = window.isEditingProd ? 'block' : 'hidden';
+
             pane.innerHTML = `
                 <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 mt-2">
                     <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-100">
@@ -3280,7 +3276,7 @@
                         <div class="flex flex-col gap-5">
                             <div class="flex items-center">
                                 <div class="w-1/3 text-[10px] text-slate-500 font-black uppercase tracking-widest">State</div>
-                                <div class="w-2/3"><select id="pd-st" class="inp !py-3 font-black text-blue-700 pd-editable bg-slate-50 shadow-sm" disabled>${statOpts}</select></div>
+                                <div class="w-2/3"><select id="pd-st" class="inp !py-3 font-black text-blue-700 pd-editable bg-slate-50 shadow-sm" ${disabledState}>${statOpts}</select></div>
                             </div>
                             <div class="flex items-center">
                                 <div class="w-1/3 text-[10px] text-slate-500 font-black uppercase tracking-widest">Case Ref</div>
@@ -3308,12 +3304,12 @@
                             </div>
                             <div class="flex items-center">
                                 <div class="w-1/3 text-[10px] text-slate-500 font-black uppercase tracking-widest">Age Range</div>
-                                <div class="w-2/3"><input type="number" id="pd-age" class="inp !py-3 font-bold text-slate-700 pd-editable bg-slate-50 shadow-sm" value="${x.age || ''}" disabled></div>
+                                <div class="w-2/3"><input type="number" id="pd-age" class="inp !py-3 font-bold text-slate-700 pd-editable bg-slate-50 shadow-sm" value="${x.age || ''}" ${disabledState}></div>
                             </div>
                         </div>
                     </div>
 
-                    <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-100">
+                    <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 flex flex-col">
                         <h5 class="text-[10px] font-black text-slate-400 mb-6 uppercase tracking-widest border-b border-slate-100 pb-3 flex items-center gap-2">
                             <span class="w-2 h-2 rounded-full bg-purple-500 block"></span> Specs & Execution
                         </h5>
@@ -3329,31 +3325,32 @@
                             <div class="flex items-center border-b border-slate-100 pb-4 mt-2">
                                 <div class="w-1/3 text-[10px] text-slate-500 font-black uppercase tracking-widest">Tech Assign</div>
                                 <div class="w-2/3 flex gap-2">
-                                    <select id="pd-asn" class="inp !py-3 font-black text-purple-700 pd-editable bg-purple-50/50 shadow-sm border-purple-200" disabled>${techOpts}</select>
-                                    <button onclick="addTech()" class="btn btn-blue !p-3 shadow-sm pd-editable" disabled title="Add New Tech">+</button>
+                                    <select id="pd-asn" class="inp !py-3 font-black text-purple-700 pd-editable bg-purple-50/50 shadow-sm border-purple-200" ${disabledState}>${techOpts}</select>
+                                    <button onclick="addTech()" class="btn btn-blue !p-3 shadow-sm pd-editable" ${disabledState} title="Add New Tech">+</button>
                                 </div>
                             </div>
                             <div class="flex items-center mt-2">
                                 <div class="w-1/3 text-[10px] text-emerald-600 font-black uppercase tracking-widest">Completion Log</div>
-                                <div class="w-2/3"><input type="date" id="pd-comp" class="inp !py-3 font-black text-emerald-700 pd-editable bg-emerald-50/50 shadow-sm border-emerald-200" value="${x.comp ? x.comp.split('T')[0] : ''}" disabled></div>
+                                <div class="w-2/3"><input type="date" id="pd-comp" class="inp !py-3 font-black text-emerald-700 pd-editable bg-emerald-50/50 shadow-sm border-emerald-200" value="${x.comp ? x.comp.split('T')[0] : ''}" ${disabledState}></div>
                             </div>
                             <div class="flex flex-col mt-2">
                                 <div class="w-full text-[10px] text-slate-500 font-black uppercase tracking-widest mb-3">Directives / Ops Notes</div>
-                                <div class="w-full"><textarea id="pd-rem" class="inp !py-4 font-bold text-slate-700 h-28 pd-editable bg-slate-50 shadow-inner" disabled>${x.rem||''}</textarea></div>
+                                <div class="w-full"><textarea id="pd-rem" class="inp !py-4 font-bold text-slate-700 h-28 pd-editable bg-slate-50 shadow-inner" ${disabledState}>${x.rem||''}</textarea></div>
                             </div>
                         </div>
                     </div>
                 </div>
                 
-                <div class="mt-8 pt-6 border-t border-slate-200 flex justify-end">
-                    <button id="pd-save-btn" onclick="saveProdDetails()" class="btn btn-blue px-14 py-4 shadow-xl hidden rounded-xl text-sm tracking-widest">COMMIT TICKET UPDATE</button>
+                <div class="mt-8 pt-6 border-t border-slate-200 flex justify-between">
+                    <button onclick="del('o',${selectedProdIdx},event)" class="btn btn-red px-10 py-4 shadow-md rounded-xl text-xs tracking-widest">VOID TICKET</button>
+                    <button id="pd-save-btn" onclick="saveProdDetails()" class="btn btn-blue px-14 py-4 shadow-xl ${saveBtnClass} rounded-xl text-sm tracking-widest">COMMIT TICKET UPDATE</button>
                 </div>
             `;
         }
 
         function editProdDetails() {
-            document.querySelectorAll('.pd-editable').forEach(el => el.disabled = false);
-            document.getElementById('pd-save-btn').classList.remove('hidden');
+            window.isEditingProd = true; // Lock Sync
+            renderProdDetails();
         }
 
         function saveProdDetails() {
@@ -3369,6 +3366,8 @@
             let newComp = document.getElementById('pd-comp').value;
             if(newComp) x.comp = newComp.includes('T') ? newComp : newComp + 'T12:00';
             else x.comp = "";
+
+            window.isEditingProd = false; // Release sync lock
 
             sv(); rProd(); dash(); if(typeof rAcc === 'function') rAcc();
             
@@ -3404,7 +3403,7 @@
                     S.pr[p] = parseFloat(inputEl.value);
                 }
             });
-            sv();
+            sv(); // Saves the whole S object
             if(typeof calcPrice === 'function') calcPrice();
             alert('Master Catalog Baseline Updated.');
         }
@@ -3683,8 +3682,7 @@
             
             let bubble = document.getElementById('chat-bubble');
             if(b.style.display === 'flex') {
-                rChat(); // Force render latest messages when opened
-                // Reset bubble icon (removes the red notification dot)
+                rChat(); 
                 bubble.innerHTML = '<svg class="w-6 h-6 drop-shadow-md text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path></svg>';
             }
         }
@@ -3712,16 +3710,15 @@
                 const { data } = await _supabase.from('dap_store').select('data').eq('id', 'dap_v4_msg').single();
                 let liveMsgs = data ? data.data : [...S.msg];
                 
-                // Generate a Unique ID for each message
                 let uniqueMsgId = "MSG-" + Date.now().toString(36) + "-" + Math.random().toString(36).substr(2, 5).toUpperCase();
                 
                 liveMsgs.push({
-                    id: uniqueMsgId, // <-- New ID System
+                    id: uniqueMsgId,
                     f: S.curr.n, 
                     t: t, 
                     m: m, 
                     ts: new Date().toLocaleTimeString(),
-                    reacts: {} // <-- This will store the likes/hearts
+                    reacts: {} 
                 });
                 
                 await _supabase.from('dap_store').upsert({ id: 'dap_v4_msg', data: liveMsgs });
@@ -3743,10 +3740,8 @@
 
             document.getElementById('chat-body').innerHTML = f.map((x, i) => {
                 let isMe = x.f === S.curr.n;
-                // Fallback ID for old messages that were sent before we added the ID system
                 let msgId = x.id || `OLD-MSG-${i}`; 
                 
-                // Render existing reactions
                 let reactsHtml = '';
                 if(x.reacts && Object.keys(x.reacts).length > 0) {
                     reactsHtml = Object.keys(x.reacts).map(e => `
@@ -3756,10 +3751,8 @@
                     `).join(' ');
                 }
                 
-                // Only the sender (or the System Architect) can delete the message
                 let canDelete = isMe || S.curr.d === 'SYSTEM ARCHITECT';
                 
-                // Action Menu (Appears only when hovering over the message)
                 let actionMenu = `
                     <div class="flex gap-1 mt-1 justify-${isMe ? 'end' : 'start'} opacity-0 group-hover:opacity-100 transition-opacity duration-200">
                         <button onclick="reactChat('${msgId}', '👍')" class="text-[10px] bg-slate-200 hover:bg-slate-300 rounded-full w-5 h-5 flex items-center justify-center transition-colors shadow-sm">👍</button>
@@ -3786,11 +3779,9 @@
         async function delChat(msgId) {
             if(!confirm("Delete this transmission permanently?")) return;
             
-            // Fast atomic sync for deleting messages
             const { data } = await _supabase.from('dap_store').select('data').eq('id', 'dap_v4_msg').single();
             let liveMsgs = data ? data.data : [...S.msg];
             
-            // Find and remove the message using its ID
             liveMsgs = liveMsgs.filter((x, i) => (x.id || `OLD-MSG-${i}`) !== msgId);
             
             await _supabase.from('dap_store').upsert({ id: 'dap_v4_msg', data: liveMsgs });
@@ -3799,7 +3790,6 @@
         }
 
         async function reactChat(msgId, emoji) {
-            // Fast atomic sync for reactions
             const { data } = await _supabase.from('dap_store').select('data').eq('id', 'dap_v4_msg').single();
             let liveMsgs = data ? data.data : [...S.msg];
             
@@ -3810,11 +3800,9 @@
                 
                 let userIdx = msg.reacts[emoji].indexOf(S.curr.n);
                 if(userIdx > -1) {
-                    // If they already reacted, remove it (Toggle effect)
                     msg.reacts[emoji].splice(userIdx, 1); 
                     if(msg.reacts[emoji].length === 0) delete msg.reacts[emoji];
                 } else {
-                    // If not, add their reaction
                     msg.reacts[emoji].push(S.curr.n); 
                 }
                 
@@ -3957,210 +3945,6 @@
             }
             sv();
             checkMaintenance();
-        }
-
-        function rSales() {
-            let sf = document.getElementById('salesForecastChart')?.getContext('2d');
-            if(sf) {
-                if(window.sfChart) window.sfChart.destroy();
-                
-                let forecastVal = S.pipeline.reduce((acc, curr) => acc + (parseFloat(curr.fval) || 0), 0);
-                let actualVal = S.pipeline.reduce((acc, curr) => acc + (parseFloat(curr.aval) || 0), 0);
-                let totalLedgerVal = S.o.reduce((acc, curr) => acc + (parseFloat(String(curr.tot).replace(/,/g, '')) || 0), 0);
-                
-                window.sfChart = new Chart(sf, {
-                    type: 'bar',
-                    data: {
-                        labels: ['Forecast (Pipeline)', 'Actual (Pipeline)', 'Total Realized Sales'],
-                        datasets: [{
-                            label: 'Value (₱)',
-                            data: [forecastVal, actualVal, totalLedgerVal],
-                            backgroundColor: ['#8b5cf6', '#10b981', '#3b82f6'],
-                            borderRadius: 6
-                        }]
-                    },
-                    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
-                });
-            }
-
-            let sc = document.getElementById('salesCollectionChart')?.getContext('2d');
-            if(sc) {
-                if(window.scChart) window.scChart.destroy();
-                let totalCost = S.o.reduce((acc, curr) => acc + (parseFloat(String(curr.tot).replace(/,/g, '')) || 0), 0);
-                let totalPaid = S.o.reduce((acc, curr) => acc + (parseFloat(curr.amtPaid) || 0), 0);
-                let totalBal = totalCost - totalPaid;
-                
-                window.scChart = new Chart(sc, {
-                    type: 'doughnut',
-                    data: {
-                        labels: ['Collected', 'Pending/For Collection'],
-                        datasets: [{
-                            data: [totalPaid, totalBal],
-                            backgroundColor: ['#10b981', '#f43f5e'],
-                            borderWidth: 0,
-                            cutout: '75%'
-                        }]
-                    },
-                    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: {font: {family: 'Inter', size: 10}} } } }
-                });
-            }
-
-            let stList = document.getElementById('sales-team-list');
-            if(stList) {
-                stList.innerHTML = S.salesTeam.map((st, i) => `
-                    <div class="p-3 border border-slate-100 rounded-xl hover:shadow-md transition-shadow bg-white flex justify-between items-center group">
-                        <div>
-                            <h4 class="font-black text-slate-800 text-xs uppercase">${st.n}</h4>
-                            <p class="text-[9px] font-bold text-slate-400 mt-1">${st.email || 'NO EMAIL'} | ${st.phone || 'NO PHONE'}</p>
-                        </div>
-                        <div class="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <button onclick="editSalesTeam(${i})" class="btn btn-orange !py-1 !px-2 text-[9px] shadow-sm rounded-md">E</button>
-                            <button onclick="delSalesTeam(${i})" class="btn btn-red !py-1 !px-2 text-[9px] shadow-sm rounded-md">X</button>
-                        </div>
-                    </div>
-                `).join('') || '<p class="text-center text-[10px] text-slate-400 font-bold uppercase tracking-widest p-4 border-2 border-dashed border-slate-200 rounded-xl">No team members added.</p>';
-            }
-
-            let spList = document.getElementById('sales-pipeline-list');
-            if(spList) {
-                spList.innerHTML = S.pipeline.map((p, i) => {
-                    let sColor = 'bg-slate-100 text-slate-600';
-                    if(p.stage === 'CLOSED WON') sColor = 'bg-emerald-100 text-emerald-700 border border-emerald-200';
-                    if(p.stage === 'CLOSED LOST') sColor = 'bg-rose-100 text-rose-700 border border-rose-200';
-                    if(p.stage === 'NEGOTIATION') sColor = 'bg-orange-100 text-orange-700 border border-orange-200';
-                    
-                    return `
-                    <tr class="hover:bg-slate-50 transition-colors border-b">
-                        <td class="font-black text-purple-700 text-[11px] p-3">${p.n}</td>
-                        <td class="font-bold text-slate-600 text-[10px]">${p.prod}</td>
-                        <td class="font-bold text-slate-800 text-[10px]">${p.cust}</td>
-                        <td><span class="text-[9px] font-black px-2 py-1 rounded uppercase tracking-widest ${sColor}">${p.stage}</span></td>
-                        <td class="font-black text-orange-500 text-[11px]">₱${parseFloat(p.fval||0).toLocaleString()}</td>
-                        <td class="font-black text-emerald-600 text-[11px]">₱${parseFloat(p.aval||0).toLocaleString()}</td>
-                        <td class="font-bold text-slate-500 text-[10px]">${p.date}</td>
-                        <td>
-                            <button onclick="editPipeline(${i})" class="btn btn-orange !py-1 !px-3 text-[9px] shadow-sm rounded-md">EDIT</button>
-                            <button onclick="delPipeline(${i})" class="btn btn-red !py-1 !px-3 text-[9px] shadow-sm rounded-md">DEL</button>
-                        </td>
-                    </tr>
-                `}).join('') || `<tr><td colspan="8" class="text-center p-8 text-slate-400 font-bold text-[10px] uppercase tracking-widest border-2 border-dashed border-slate-200 rounded-xl">Pipeline is currently empty.</td></tr>`;
-            }
-
-            let scList = document.getElementById('sales-customers-list');
-            if(scList) {
-                scList.innerHTML = S.d.map((d, i) => `
-                    <div class="p-3 border-b border-slate-100 hover:bg-slate-50 transition-colors flex justify-between items-center cursor-pointer" onclick="vDoc(${i})">
-                        <div class="flex items-center gap-3">
-                            <img src="${d.pic || ''}" class="w-8 h-8 rounded-full object-cover border bg-slate-200" onerror="this.style.display='none'">
-                            <div>
-                                <h4 class="font-black text-xs text-slate-800 uppercase">${d.n}</h4>
-                                <p class="text-[9px] font-bold text-slate-400 mt-0.5">${d.clinic || 'NO CLINIC'}</p>
-                            </div>
-                        </div>
-                        <span class="text-[9px] font-black text-[#189ad3] uppercase tracking-widest bg-blue-50 px-2 py-1 rounded">${d.status || 'ACTIVE'}</span>
-                    </div>
-                `).join('') || '<p class="text-center text-[10px] text-slate-400 font-bold uppercase tracking-widest p-4 border-2 border-dashed border-slate-200 rounded-xl m-2">No customers in database.</p>';
-            }
-        }
-
-        function openSalesTeamModal() {
-            document.getElementById('st-idx').value = '';
-            document.getElementById('st-name').value = '';
-            document.getElementById('st-email').value = '';
-            document.getElementById('st-phone').value = '';
-            document.getElementById('st-modal-title').innerText = "Register Sales Operative";
-            document.getElementById('mod-sales-team').classList.add('active');
-        }
-
-        function editSalesTeam(i) {
-            let st = S.salesTeam[i];
-            document.getElementById('st-idx').value = i;
-            document.getElementById('st-name').value = st.n;
-            document.getElementById('st-email').value = st.email;
-            document.getElementById('st-phone').value = st.phone;
-            document.getElementById('st-modal-title').innerText = "Update Sales Operative";
-            document.getElementById('mod-sales-team').classList.add('active');
-        }
-
-        function saveSalesTeam() {
-            let i = document.getElementById('st-idx').value;
-            let obj = {
-                n: document.getElementById('st-name').value.toUpperCase(),
-                email: document.getElementById('st-email').value,
-                phone: document.getElementById('st-phone').value
-            };
-            if(!obj.n) return alert("Callsign (Name) is required.");
-            
-            if (i === "") S.salesTeam.push(obj);
-            else S.salesTeam[i] = obj;
-            
-            sv(); rSales(); closeModals();
-        }
-
-        function delSalesTeam(i) {
-            if(confirm("Remove this operative from the Sales Team? This will move to the Architect Recycle Bin.")) {
-                let removed = S.salesTeam.splice(i, 1)[0];
-                S.trash.push({ k: 'salesTeam', item: removed, ts: new Date().toLocaleString() });
-                sv(); rSales();
-            }
-        }
-
-        function openPipelineModal() {
-            if(S.d.length === 0) return alert("Must have at least one client to create a pipeline opportunity.");
-            
-            document.getElementById('sp-idx').value = '';
-            document.getElementById('sp-name').value = '';
-            popSel('sp-prod', PRODS);
-            popSel('sp-cust', S.d.map(x=>x.n));
-            document.getElementById('sp-stage').value = 'PROSPECTING';
-            document.getElementById('sp-date').value = '';
-            document.getElementById('sp-fval').value = '';
-            document.getElementById('sp-aval').value = '';
-            
-            document.getElementById('sp-modal-title').innerText = "New Pipeline Opportunity";
-            document.getElementById('mod-sales-pipeline').classList.add('active');
-        }
-
-        function editPipeline(i) {
-            let p = S.pipeline[i];
-            document.getElementById('sp-idx').value = i;
-            document.getElementById('sp-name').value = p.n;
-            popSel('sp-prod', PRODS); document.getElementById('sp-prod').value = p.prod;
-            popSel('sp-cust', S.d.map(x=>x.n)); document.getElementById('sp-cust').value = p.cust;
-            document.getElementById('sp-stage').value = p.stage;
-            document.getElementById('sp-date').value = p.date;
-            document.getElementById('sp-fval').value = p.fval;
-            document.getElementById('sp-aval').value = p.aval;
-            
-            document.getElementById('sp-modal-title').innerText = "Update Pipeline Opportunity";
-            document.getElementById('mod-sales-pipeline').classList.add('active');
-        }
-
-        function savePipeline() {
-            let i = document.getElementById('sp-idx').value;
-            let obj = {
-                n: document.getElementById('sp-name').value.toUpperCase(),
-                prod: document.getElementById('sp-prod').value,
-                cust: document.getElementById('sp-cust').value,
-                stage: document.getElementById('sp-stage').value,
-                date: document.getElementById('sp-date').value,
-                fval: document.getElementById('sp-fval').value,
-                aval: document.getElementById('sp-aval').value
-            };
-            if(!obj.n) return alert("Opportunity Identifier is required.");
-            
-            if (i === "") S.pipeline.push(obj);
-            else S.pipeline[i] = obj;
-            
-            sv(); rSales(); closeModals();
-        }
-
-        function delPipeline(i) {
-            if(confirm("Remove this pipeline opportunity? This will move to the Architect Recycle Bin.")) {
-                let removed = S.pipeline.splice(i, 1)[0];
-                S.trash.push({ k: 'pipeline', item: removed, ts: new Date().toLocaleString() });
-                sv(); rSales();
-            }
         }
 
         function rMaintenance() {
@@ -4354,6 +4138,7 @@
             closeModals();
             alert('Employee Dossier Updated.');
         }
+
         // --- SECURE IDLE TIMEOUT SYSTEM ---
         let idleTime = 0;
         let idleInterval;
@@ -4362,7 +4147,6 @@
         let isIdleModalOpen = false;
 
         function startIdleTracking() {
-            // Track physical activity
             window.onload = resetIdle;
             window.onmousemove = resetIdle;
             window.onmousedown = resetIdle;
@@ -4370,19 +4154,15 @@
             window.onclick = resetIdle;
             window.onkeydown = resetIdle;
 
-            // Check every 1 second
             clearInterval(idleInterval);
             idleInterval = setInterval(idleCheck, 1000);
         }
 
         function resetIdle() {
-            // If the warning modal is already showing, moving the mouse won't save them. 
-            // They MUST click the "I AM STILL HERE" button.
             if (isIdleModalOpen) return; 
             
             idleTime = 0;
             
-            // Constantly update the timestamp in sessionStorage so refreshing the page doesn't kick them out
             if (S.curr) {
                 let session = sessionStorage.getItem('dap_session');
                 if (session) {
@@ -4396,10 +4176,9 @@
         }
 
         function idleCheck() {
-            if (!S.curr) return; // Only count if logged in
+            if (!S.curr) return; 
             idleTime++;
             
-            // 180 seconds = exactly 3 minutes of zero physical movement
             if (idleTime >= 180 && !isIdleModalOpen) {
                 showIdleWarning();
             }
@@ -4416,7 +4195,6 @@
                 countdownValue--;
                 document.getElementById('idle-countdown').innerText = countdownValue;
                 
-                // If the timer hits 0, nuke the session and reload the page
                 if (countdownValue <= 0) {
                     clearInterval(countdownInterval);
                     logout(); 
@@ -4431,20 +4209,20 @@
             document.getElementById('mod-idle-warning').classList.remove('active');
             resetIdle();
         }
+
         // --- MASTER GLOBAL LIVE SYNC (Total System Pulse - 3 Sec Rule) ---
         async function syncGlobalLive() {
-            // Stop sync if not logged in or if the user is currently typing/saving a case
-            if (!S.curr || window.isSavingOrder) return; 
+            if (!S.curr || window.isSavingOrder || window.isEditingProd || window.isSyncing) return; 
 
             try {
-                // 1. Pull core dynamic tables
                 const { data: ordRes } = await _supabase.from('dap_store').select('data').eq('id', 'dap_v4_o').single();
                 const { data: msgRes } = await _supabase.from('dap_store').select('data').eq('id', 'dap_v4_msg').single();
                 const { data: docRes } = await _supabase.from('dap_store').select('data').eq('id', 'dap_v4_d').single();
+                const { data: vRes } = await _supabase.from('dap_store').select('data').eq('id', 'dap_v4_v').single();
+                const { data: prRes } = await _supabase.from('dap_store').select('data').eq('id', 'dap_v4_pr').single();
 
                 let needsRefresh = false;
 
-                // 2. Sync Chat
                 if (msgRes && msgRes.data && msgRes.data.length !== S.msg.length) {
                     let isNew = msgRes.data.length > S.msg.length;
                     S.msg = msgRes.data;
@@ -4456,19 +4234,17 @@
                     }
                 }
 
-                // 3. Sync Cases (Dashboard, Accounting, Production, Clinic Support)
-                if (ordRes && ordRes.data && JSON.stringify(ordRes.data) !== JSON.stringify(S.o)) {
-                    S.o = ordRes.data;
-                    needsRefresh = true;
+                if (ordRes && ordRes.data && JSON.stringify(ordRes.data) !== JSON.stringify(S.o)) { S.o = ordRes.data; needsRefresh = true; }
+                if (docRes && docRes.data && JSON.stringify(docRes.data) !== JSON.stringify(S.d)) { S.d = docRes.data; needsRefresh = true; }
+                if (vRes && vRes.data && JSON.stringify(vRes.data) !== JSON.stringify(S.v)) { 
+                    S.v = vRes.data; 
+                    if(document.getElementById('p-accounting').classList.contains('active')) rDisc(); 
+                }
+                if (prRes && prRes.data && JSON.stringify(prRes.data) !== JSON.stringify(S.pr)) { 
+                    S.pr = prRes.data; 
+                    if(document.getElementById('p-accounting').classList.contains('active') && !document.getElementById('p-catalog').classList.contains('hidden')) renderCatalog(); 
                 }
 
-                // 4. Sync Doctors/Clients
-                if (docRes && docRes.data && JSON.stringify(docRes.data) !== JSON.stringify(S.d)) {
-                    S.d = docRes.data;
-                    needsRefresh = true;
-                }
-
-                // 5. Instantly update all visible modules if a change was detected
                 if (needsRefresh) {
                     console.log("Cloud update detected. Synchronizing modules...");
                     if(typeof rOrd === 'function') rOrd(); 
@@ -4477,7 +4253,6 @@
                     if(typeof rDocs === 'function') rDocs();
                     if(typeof rProd === 'function') rProd();
                     
-                    // Only refresh these if their pages are currently active to save resources
                     if(typeof rSales === 'function' && document.getElementById('p-sales').classList.contains('active')) rSales();
                     if(typeof rMaintenance === 'function' && document.getElementById('p-maintenance').classList.contains('active')) rMaintenance();
                     if(typeof initFullCal === 'function' && document.getElementById('p-calendar').classList.contains('active')) initFullCal();
@@ -4488,7 +4263,6 @@
             }
         }
 
-        // Engage the 3-second live heartbeat globally
         setInterval(syncGlobalLive, 3000);
         initApp();
     </script>
