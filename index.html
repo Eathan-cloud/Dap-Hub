@@ -1387,126 +1387,134 @@
                 window.isSyncing = false; 
             }, 3000); 
         }
-      // --- ASYNC BOOTLOADER (ZERO-FLASH VERSION) ---
-        async function initApp() {
-            // 1. CHECK THE TOKEN INSTANTLY (While Boot Screen covers the UI)
-            let session = sessionStorage.getItem('dap_session');
-            let isLoggedIn = false;
+     // --- ASYNC BOOTLOADER (NEW RELATIONAL DB VERSION WITH FALLBACK) ---
+async function initApp() {
+    let session = sessionStorage.getItem('dap_session');
+    let isLoggedIn = false;
+    
+    // 1. CHECK THE TOKEN INSTANTLY
+    if(session) {
+        try {
+            let parsed = JSON.parse(session);
+            let currentTime = Date.now();
+            let minsPassed = (currentTime - (parsed.ts || 0)) / (1000 * 60);
             
-            if(session) {
-                try {
-                    let parsed = JSON.parse(session);
-                    let currentTime = Date.now();
-                    let minsPassed = (currentTime - (parsed.ts || 0)) / (1000 * 60);
-                    
-                    if(minsPassed <= 5) {
-                        // FORCE HIDE LOGIN SCREEN IMMEDIATELY
-                        document.getElementById('auth-layer').style.display = 'none'; 
-                        document.getElementById('auth-layer').classList.add('hidden');
-                        document.getElementById('app-shell').classList.remove('hidden');
-                        document.getElementById('app-shell').style.display = 'flex';
-                        
-                        // Temporarily trust token to hold the screen
-                        S.curr = { n: parsed.n, p: parsed.p, d: 'LOADING', s: 'active', m: BASE_MODS }; 
-                        parsed.ts = currentTime; 
-                        sessionStorage.setItem('dap_session', JSON.stringify(parsed));
-                        
-                        isLoggedIn = true;
-                    } else {
-                        sessionStorage.removeItem('dap_session');
-                    }
-                } catch(e) {
-                    sessionStorage.removeItem('dap_session');
-                }
-            } else {
-                 // No token = Force login screen to be ready under the boot screen
-                 document.getElementById('auth-layer').classList.remove('hidden');
-                 document.getElementById('auth-layer').style.display = 'flex';
-            }
-
-            try {
-                // 2. SILENTLY FETCH CLOUD DATA
-                const { data, error } = await _supabase.from('dap_store').select('*');
-                if (data && data.length > 0) {
-                    let map = {};
-                    data.forEach(row => map[row.id] = row.data);
-                    S.u = map['dap_v4_u'] || S.u;
-                    S.d = map['dap_v4_d'] || S.d;
-                    S.o = map['dap_v4_o'] || S.o;
-                    S.salesTeam = map['dap_v4_salesTeam'] || S.salesTeam;
-                    S.pipeline = map['dap_v4_pipeline'] || S.pipeline;
-                    S.pr = map['dap_v4_pr'] || S.pr;
-                    S.prData = map['dap_v4_prData'] || S.prData;
-                    S.v = map['dap_v4_v'] || S.v;
-                    S.locs = map['dap_v4_locs'] || S.locs;
-                    S.stats = map['dap_v4_stats'] || S.stats;
-                    S.ctypes = map['dap_v4_ctypes'] || S.ctypes;
-                    S.shades = map['dap_v4_shades'] || S.shades;
-                    S.fonts = map['dap_v4_fonts'] || S.fonts;
-                    S.trash = map['dap_v4_trash'] || S.trash;
-                    S.dynMods = map['dap_v4_dynMods'] || S.dynMods;
-                    S.dynModContent = map['dap_v4_dynModContent'] || S.dynModContent;
-                    S.techs = map['dap_v4_techs'] || S.techs;
-                    S.sys = map['dap_v4_sys'] || S.sys;
-                    S.msg = map['dap_v4_msg'] || S.msg;
-                }
-            } catch (e) {
-                console.warn("Silent sync delayed.");
-            }
-
-            // 3. ATTACH REAL PROFILE AND INITIALIZE
-            if (isLoggedIn && session) {
-                let parsed = JSON.parse(session);
-                let realAcc = S.u.find(x => x.n === parsed.n && String(x.p) === String(parsed.p));
+            if(minsPassed <= 5) {
+                document.getElementById('auth-layer').style.display = 'none'; 
+                document.getElementById('auth-layer').classList.add('hidden');
+                document.getElementById('app-shell').classList.remove('hidden');
+                document.getElementById('app-shell').style.display = 'flex';
                 
-                if (realAcc && realAcc.s === 'active') {
-                    S.curr = realAcc;
-                    initNav(); initChat(); populateSandboxSelect(); checkMaintenance();
-                    startIdleTracking();
-                } else {
-                    // Security trigger: Account was deleted or banned while they were offline
-                    sessionStorage.removeItem('dap_session');
-                    isLoggedIn = false;
-                    document.getElementById('auth-layer').classList.remove('hidden');
-                    document.getElementById('auth-layer').style.display = 'flex';
-                    document.getElementById('app-shell').classList.add('hidden');
-                    document.getElementById('app-shell').style.display = 'none';
-                }
+                S.curr = { n: parsed.n, p: parsed.p, d: 'LOADING', s: 'active', m: BASE_MODS }; 
+                parsed.ts = currentTime; 
+                sessionStorage.setItem('dap_session', JSON.stringify(parsed));
+                
+                isLoggedIn = true;
+            } else {
+                sessionStorage.removeItem('dap_session');
             }
-
-            let seenU = new Set();
-            let ogLen = S.u.length;
-            S.u = S.u.filter(x => { if(seenU.has(x.n)) return false; seenU.add(x.n); return true; });
-            let usersModified = (S.u.length !== ogLen);
-            let prModified = false;
-            PRODS.forEach(p => {
-                if(!S.pr[p]) { S.pr[p] = 1500; prModified = true; }
-                if(!S.prData[p]) { 
-                    let catShortcut = p.split(/\s+/).map(w => w[0]).join('').substring(0, 4); 
-                    S.prData[p] = { code: 'N/A', cat: catShortcut }; 
-                    prModified = true;
-                }
-            });
-
-            if(usersModified || prModified) await sv(); 
-            S.dynMods.forEach(m => injectDynMod(m));
-
-            let savedBg = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim();
-            if(savedBg === '#0f172a') document.body.classList.add('dark-mode');
-            
-            if(!isLoggedIn && (S.u.length === 0 || (S.u.length === 1 && S.u[0].d === 'SYSTEM ARCHITECT'))) {
-                alert('CRITICAL: System Architect Initialization Required.');
-                document.getElementById('r-role').value = 'ADMIN';
-                toggleReg(true);
-            }
-
-            // 4. FADE OUT AND DESTROY BOOT SCREEN
-            let bootScreen = document.getElementById('system-boot-screen');
-            if(bootScreen) {
-                bootScreen.style.opacity = "0";
-                setTimeout(() => bootScreen.remove(), 300); // Wait for fade out, then destroy
-            }
+        } catch(e) {
+            sessionStorage.removeItem('dap_session');
         }
+    } else {
+         document.getElementById('auth-layer').classList.remove('hidden');
+         document.getElementById('auth-layer').style.display = 'flex';
+    }
+
+    try {
+        // 2. FETCH DATA FROM BOTH NEW TABLES AND OLD SETTINGS TABLE
+        const [usersRes, clientsRes, ordersRes, storeRes] = await Promise.all([
+            _supabase.from('dap_users').select('*'),
+            _supabase.from('dap_clients').select('*'),
+            _supabase.from('dap_job_orders').select('*'),
+            _supabase.from('dap_store').select('*')
+        ]);
+
+        let data = storeRes.data;
+        let map = {};
+        if (data && data.length > 0) {
+            data.forEach(row => map[row.id] = row.data);
+        }
+
+        // A. MAP CORE DATA WITH FALLBACK (Eto yung code mo!)
+        if (usersRes.data && usersRes.data.length > 0) {
+            S.u = usersRes.data.map(u => ({ n: u.username, p: u.password, d: u.role, s: u.status, m: u.modules }));
+        } else {
+            S.u = map['dap_v4_u'] || [];
+        }
+
+        if (clientsRes.data && clientsRes.data.length > 0) {
+            S.d = clientsRes.data.map(c => ({ id: c.id, n: c.name, clinic: c.clinic, phone: c.phone, addr: c.address }));
+        } else {
+            S.d = map['dap_v4_d'] || [];
+        }
+
+        if (ordersRes.data && ordersRes.data.length > 0) {
+            S.o = ordersRes.data.map(o => ({ 
+                id: o.id, doc: o.client_id, pat: o.patient_name, st: o.status, 
+                tot: o.total_cost, amtPaid: o.amount_paid, prods: o.products 
+            }));
+        } else {
+            S.o = map['dap_v4_o'] || [];
+        }
+
+        // B. MAP OLD SETTINGS & CONFIGS
+        S.salesTeam = map['dap_v4_salesTeam'] || S.salesTeam;
+        S.pipeline = map['dap_v4_pipeline'] || S.pipeline;
+        S.pr = map['dap_v4_pr'] || S.pr;
+        S.prData = map['dap_v4_prData'] || S.prData;
+        S.v = map['dap_v4_v'] || S.v;
+        S.locs = map['dap_v4_locs'] || S.locs;
+        S.stats = map['dap_v4_stats'] || S.stats;
+        S.ctypes = map['dap_v4_ctypes'] || S.ctypes;
+        S.shades = map['dap_v4_shades'] || S.shades;
+        S.fonts = map['dap_v4_fonts'] || S.fonts;
+        S.trash = map['dap_v4_trash'] || S.trash;
+        S.dynMods = map['dap_v4_dynMods'] || S.dynMods;
+        S.dynModContent = map['dap_v4_dynModContent'] || S.dynModContent;
+        S.techs = map['dap_v4_techs'] || S.techs;
+        S.sys = map['dap_v4_sys'] || S.sys;
+        S.msg = map['dap_v4_msg'] || S.msg;
+
+    } catch (e) {
+        console.warn("Silent sync delayed or failed:", e);
+    }
+
+    // 3. ATTACH REAL PROFILE AND INITIALIZE
+    if (isLoggedIn && session) {
+        let parsed = JSON.parse(session);
+        let realAcc = S.u.find(x => x.n === parsed.n && String(x.p) === String(parsed.p));
+        
+        if (realAcc && realAcc.s === 'active') {
+            S.curr = realAcc;
+            initNav(); initChat(); populateSandboxSelect(); checkMaintenance();
+            startIdleTracking();
+        } else {
+            sessionStorage.removeItem('dap_session');
+            isLoggedIn = false;
+            document.getElementById('auth-layer').classList.remove('hidden');
+            document.getElementById('auth-layer').style.display = 'flex';
+            document.getElementById('app-shell').classList.add('hidden');
+            document.getElementById('app-shell').style.display = 'none';
+        }
+    }
+
+    let savedBg = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim();
+    if(savedBg === '#0f172a') document.body.classList.add('dark-mode');
+    
+    if(!isLoggedIn && (S.u.length === 0 || (S.u.length === 1 && S.u[0].d === 'SYSTEM ARCHITECT'))) {
+        alert('CRITICAL: System Architect Initialization Required.');
+        document.getElementById('r-role').value = 'ADMIN';
+        toggleReg(true);
+    }
+
+    // 4. FADE OUT AND DESTROY BOOT SCREEN
+    let bootScreen = document.getElementById('system-boot-screen');
+    if(bootScreen) {
+        bootScreen.style.opacity = "0";
+        setTimeout(() => bootScreen.remove(), 300);
+    }
+}
         // --- ALL YOUR EXACT ORIGINAL FUNCTIONS START HERE ---
         function closeModals() { document.querySelectorAll('.modal').forEach(m => m.classList.remove('active')); }
 
