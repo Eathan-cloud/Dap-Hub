@@ -1327,66 +1327,78 @@
         window.lastSaveTime = 0; 
 
         // --- MULTI-USER SUPABASE SAVE FUNCTION (SMART MERGE WITH DELETE SUPPORT) ---
-       async function sv(targetKey = null) {
-            window.isSavingOrder = true;
-            window.lastSaveTime = Date.now(); 
-            window.isSyncing = true;
-            
-            let btn = document.getElementById('sync-indicator');
-            if(!btn) {
-                btn = document.createElement('div');
-                btn.id = 'sync-indicator';
-                btn.innerHTML = 'SYNCING TO CLOUD...';
-                btn.style.cssText = 'position:fixed;top:20px;right:20px;background:#f59e0b;color:white;padding:8px 16px;border-radius:8px;z-index:99999;font-size:10px;font-weight:900;box-shadow:0 4px 6px rgba(0,0,0,0.1);';
-                document.body.appendChild(btn);
-            }
+     async function sv(targetKey = null) {
+    window.isSavingOrder = true;
+    window.lastSaveTime = Date.now(); 
+    window.isSyncing = true;
+    
+    let btn = document.getElementById('sync-indicator');
+    if(!btn) {
+        btn = document.createElement('div');
+        btn.id = 'sync-indicator';
+        btn.innerHTML = 'SYNCING TO CLOUD...';
+        btn.style.cssText = 'position:fixed;top:20px;right:20px;background:#10b981;color:white;padding:8px 16px;border-radius:8px;z-index:99999;font-size:10px;font-weight:900;box-shadow:0 4px 6px rgba(0,0,0,0.1);';
+        document.body.appendChild(btn);
+    }
 
-            const keys = targetKey ? [targetKey] : Object.keys(S).filter(k => k !== 'curr');
-            
-            for (let k of keys) {
-                // FIX: Exclude 'techs' from merging so it completely OVERWRITES the cloud data.
-                if (Array.isArray(S[k]) && k !== 'trash' && k !== 'msg' && k !== 'techs') {
-                    const { data } = await _supabase.from('dap_store').select('data').eq('id', 'dap_v4_' + k).single();
-                    let cloudArray = data ? data.data : [];
-                    
-                    let merged = [...cloudArray];
+    try {
+        // FIX 1: If targetKey is null (like in Accounting/Production), save everything to prevent data loss.
+        let keysToSave = targetKey ? [targetKey] : ['o', 'd', 'sys', 'v', 'pr', 'techs', 'u'];
 
-                    let trashedIds = S.trash.filter(t => t.k === k).map(t => {
-                        if(!t.item) return null;
-                        return t.item.id || t.item.n || t.item.c;
-                    }).filter(Boolean);
-                    
-                    merged = merged.filter(cItem => {
-                        let cKey = cItem.id || cItem.n || cItem.c;
-                        return !(cKey && trashedIds.includes(cKey));
-                    });
+        for (let key of keysToSave) {
+            if (key === 'o') {
+                // Save FULL data to the JSON blob to guarantee nested arrays (payments, remarks) are kept
+                await _supabase.from('dap_store').upsert({ id: 'dap_v4_o', data: S.o });
 
-                    S[k].forEach(localItem => {
-                        let uniqueKey = localItem.id || localItem.n || localItem.c; 
-                        if (uniqueKey) {
-                            let idx = merged.findIndex(cItem => (cItem.id || cItem.n || cItem.c) === uniqueKey);
-                            if (idx >= 0) merged[idx] = localItem; 
-                            else merged.push(localItem); 
-                        } else {
-                            if (!merged.includes(localItem)) merged.push(localItem);
-                        }
-                    });
-                    
-                    S[k] = merged; 
-                    await _supabase.from('dap_store').upsert({ id: 'dap_v4_' + k, data: merged });
-                } else {
-                    // This triggers for 'techs' now. It overwrites the database completely. No ghosting.
-                    await _supabase.from('dap_store').upsert({ id: 'dap_v4_' + k, data: S[k] });
+                // Bulk upsert to relational table as a mirror
+                let mappedOrders = S.o.map(o => ({
+                    id: o.id,
+                    client_id: o.doc,
+                    patient_name: o.pat,
+                    status: o.st,
+                    total_cost: parseFloat(String(o.tot).replace(/,/g, '')) || 0,
+                    amount_paid: o.amtPaid || 0,
+                    received_date: o.date || new Date().toISOString(),
+                    target_date: o.due || null,
+                    products: o.prods || [],
+                    teeth: o.teeth || [],
+                    assigned_tech: o.asn || null
+                }));
+                if(mappedOrders.length > 0) {
+                    await _supabase.from('dap_job_orders').upsert(mappedOrders);
+                }
+            } 
+            else if (key === 'd') {
+                await _supabase.from('dap_store').upsert({ id: 'dap_v4_d', data: S.d });
+
+                let mappedClients = S.d.map(c => ({
+                    id: c.id,
+                    name: c.n,
+                    clinic: c.clinic,
+                    phone: c.phone,
+                    email: c.email,
+                    address: c.addr,
+                    status: c.status || 'ACTIVE'
+                }));
+                if(mappedClients.length > 0) {
+                    await _supabase.from('dap_clients').upsert(mappedClients);
                 }
             }
-            
-            if(document.getElementById('sync-indicator')) document.getElementById('sync-indicator').remove();
-            
-            setTimeout(() => { 
-                window.isSavingOrder = false; 
-                window.isSyncing = false; 
-            }, 3000); 
+            else {
+                await _supabase.from('dap_store').upsert({ id: 'dap_v4_' + key, data: S[key] });
+            }
         }
+    } catch (err) {
+        console.error("Cloud Sync Error:", err);
+    }
+    
+    if(document.getElementById('sync-indicator')) document.getElementById('sync-indicator').remove();
+    
+    setTimeout(() => { 
+        window.isSavingOrder = false; 
+        window.isSyncing = false; 
+    }, 1000); 
+}
      // --- ASYNC BOOTLOADER (NEW RELATIONAL DB VERSION WITH FALLBACK) ---
 async function initApp() {
     let session = sessionStorage.getItem('dap_session');
@@ -1422,11 +1434,9 @@ async function initApp() {
     }
 
     try {
-        // 2. FETCH DATA FROM BOTH NEW TABLES AND OLD SETTINGS TABLE
-        const [usersRes, clientsRes, ordersRes, storeRes] = await Promise.all([
+        // 2. FETCH DATA FROM THE SETTINGS TABLE AS THE PRIMARY SOURCE OF TRUTH
+        const [usersRes, storeRes] = await Promise.all([
             _supabase.from('dap_users').select('*'),
-            _supabase.from('dap_clients').select('*'),
-            _supabase.from('dap_job_orders').select('*'),
             _supabase.from('dap_store').select('*')
         ]);
 
@@ -1436,27 +1446,16 @@ async function initApp() {
             data.forEach(row => map[row.id] = row.data);
         }
 
-        // A. MAP CORE DATA WITH FALLBACK (Eto yung code mo!)
+        // A. MAP CORE DATA 
         if (usersRes.data && usersRes.data.length > 0) {
             S.u = usersRes.data.map(u => ({ n: u.username, p: u.password, d: u.role, s: u.status, m: u.modules }));
         } else {
             S.u = map['dap_v4_u'] || [];
         }
 
-        if (clientsRes.data && clientsRes.data.length > 0) {
-            S.d = clientsRes.data.map(c => ({ id: c.id, n: c.name, clinic: c.clinic, phone: c.phone, addr: c.address }));
-        } else {
-            S.d = map['dap_v4_d'] || [];
-        }
-
-        if (ordersRes.data && ordersRes.data.length > 0) {
-            S.o = ordersRes.data.map(o => ({ 
-                id: o.id, doc: o.client_id, pat: o.patient_name, st: o.status, 
-                tot: o.total_cost, amtPaid: o.amount_paid, prods: o.products 
-            }));
-        } else {
-            S.o = map['dap_v4_o'] || [];
-        }
+        // FIX 2: Load entirely from the JSON blob to prevent losing nested arrays (payments, remarks, tech assignments)
+        S.d = map['dap_v4_d'] || [];
+        S.o = map['dap_v4_o'] || [];
 
         // B. MAP OLD SETTINGS & CONFIGS
         S.salesTeam = map['dap_v4_salesTeam'] || S.salesTeam;
@@ -1479,7 +1478,6 @@ async function initApp() {
     } catch (e) {
         console.warn("Silent sync delayed or failed:", e);
     }
-
     // 3. ATTACH REAL PROFILE AND INITIALIZE
     if (isLoggedIn && session) {
         let parsed = JSON.parse(session);
@@ -1837,17 +1835,14 @@ async function emptyTrash() {
 }
 
 // --- RECYCLE BIN / TRASH CORE FUNCTIONS ---
-
 async function del(k, i, e) {
     if(e) e.stopPropagation();
     
-    // Engage Sync Locks
     window.isSavingOrder = true;
     window.isSyncing = true;
     window.lastSaveTime = Date.now();
 
     let item;
-    // Extract the item
     if (k === 'd') { item = S.d.splice(i, 1)[0]; }
     else if (k === 'o') { item = S.o.splice(i, 1)[0]; window.isEditingProd = false; selectedProdIdx = -1; }
     else if (k === 'v') { item = S.v.splice(i, 1)[0]; }
@@ -1856,25 +1851,48 @@ async function del(k, i, e) {
         if(idx > -1) item = S.u.splice(idx, 1)[0]; 
     }
 
-    // Push to trash and FORCE Supabase to save it immediately
     if (item) {
         if (!S.trash) S.trash = [];
         S.trash.push({ k: k, item: item, ts: new Date().toLocaleString() });
         
-        await sv(k);        // Save the array where the item was removed
-        await sv('trash');  // Force save the trash array to the database
+        try {
+            if (k === 'o' && item.id) {
+                // Delete sa bagong table
+                await _supabase.from('dap_job_orders').delete().eq('id', item.id);
+                // I-update ang dap_store para hindi bumalik pag nag-sync
+                await _supabase.from('dap_store').upsert({ id: 'dap_v4_o', data: S.o });
+            } else if (k === 'd' && item.id) {
+                // Delete sa bagong table
+                await _supabase.from('dap_clients').delete().eq('id', item.id);
+                // I-update ang dap_store para hindi bumalik pag nag-sync
+                await _supabase.from('dap_store').upsert({ id: 'dap_v4_d', data: S.d });
+            } else {
+                await sv(k); 
+            }
+        } catch(err) {
+            console.error("Database deletion failed:", err);
+        }
+
+        await sv('trash');  
     }
 
     window.lastSaveTime = Date.now();
 
-    // Update UI
     if(document.querySelector('.page.active')?.id === 'p-architect') rTrash();
     if(k === 'd') rDocs();
-    if(k === 'o') { rOrd(); rProd(); if(typeof rAcc === 'function') rAcc(); dash(); }
+    if(k === 'o') { 
+        if(selectedClinicSupportIdx === i) {
+            let pane = document.getElementById('cs-details-pane');
+            if (pane) pane.innerHTML = `<div class="absolute inset-0 flex items-center justify-center pointer-events-none"><div class="text-center text-slate-400 font-black text-xs uppercase tracking-widest border-2 border-dashed border-slate-300 p-8 rounded-2xl bg-white/50 pointer-events-auto shadow-sm">Select a Case from the queue to view full inspection details</div></div>`;
+            let actions = document.getElementById('cs-action-btns');
+            if (actions) actions.classList.add('hidden');
+            selectedClinicSupportIdx = -1;
+        }
+        rOrd(); rProd(); if(typeof rAcc === 'function') rAcc(); dash(); 
+    }
     if(k === 'v') rDisc();
     if(k === 'u') rUsers();
 
-    // Release Locks
     setTimeout(() => { window.isSavingOrder = false; window.isSyncing = false; }, 3000);
 }
         function dash() {
@@ -2328,80 +2346,83 @@ async function del(k, i, e) {
         }
 
        function rAcc() {
-            let inProdCases = S.o.filter(x => x.st === 'In Production' || x.st === 'IN PRODUCTION').length;
-            let discountedCases = S.o.filter(x => x.v && x.v !== 'NONE').length;
-            
-            let accStatsHtml = `
-                <div class="card p-5 border-0 shadow-sm rounded-2xl flex flex-col justify-between bg-white border-l-4 border-l-blue-500">
-                    <h4 class="text-[10px] text-gray-500 font-bold uppercase tracking-widest leading-tight mb-2">Total Clients</h4>
-                    <h2 class="text-3xl font-black text-gray-800 kpi-val-blue">${S.d.length}</h2>
+    let inProdCases = S.o.filter(x => x.st === 'In Production' || x.st === 'IN PRODUCTION').length;
+    let discountedCases = S.o.filter(x => x.v && x.v !== 'NONE').length;
+    
+    let accStatsHtml = `
+        <div class="card p-5 border-0 shadow-sm rounded-2xl flex flex-col justify-between bg-white border-l-4 border-l-blue-500">
+            <h4 class="text-[10px] text-gray-500 font-bold uppercase tracking-widest leading-tight mb-2">Total Clients</h4>
+            <h2 class="text-3xl font-black text-gray-800 kpi-val-blue">${S.d.length}</h2>
+        </div>
+        <div class="card p-5 border-0 shadow-sm rounded-2xl flex flex-col justify-between bg-white border-l-4 border-l-orange-500">
+            <h4 class="text-[10px] text-gray-500 font-bold uppercase tracking-widest leading-tight mb-2">Total Cases</h4>
+            <h2 class="text-3xl font-black text-gray-800 kpi-val-orange">${S.o.length}</h2>
+        </div>
+        <div class="card p-5 border-0 shadow-sm rounded-2xl flex flex-col justify-between bg-white border-l-4 border-l-purple-500">
+            <h4 class="text-[10px] text-gray-500 font-bold uppercase tracking-widest leading-tight mb-2">WIP (In Prod)</h4>
+            <h2 class="text-3xl font-black text-gray-800 kpi-val-purple">${inProdCases}</h2>
+        </div>
+        <div class="card p-5 border-0 shadow-sm rounded-2xl flex flex-col justify-between bg-white border-l-4 border-l-emerald-500">
+            <h4 class="text-[10px] text-gray-500 font-bold uppercase tracking-widest leading-tight mb-2">Discounted Volume</h4>
+            <h2 class="text-3xl font-black text-gray-800 kpi-val-emerald">${discountedCases}</h2>
+        </div>
+    `;
+    let accContainer = document.getElementById('acc-stats-grid');
+    if(accContainer) accContainer.innerHTML = accStatsHtml;
+
+    let filter = document.getElementById('acc-filter').value;
+    let sq = document.getElementById('acc-search')?.value.toUpperCase() || ''; // SEARCH LOGIC
+    let tbody = document.getElementById('b-receivables');
+    
+    let rows = S.o.slice(-100).reverse().map((x, i) => {
+       let tot = parseFloat(String(x.tot).replace(/,/g, '')) || 0;
+       let paid = x.amtPaid || 0;
+       
+       // FIX: We must calculate the balance here so the status logic works
+       let bal = tot - paid; 
+       
+        let currentStatus = x.manualPayStatus ? x.manualPayStatus : (bal <= 0 ? 'FULLY PAID' : (paid > 0 ? 'PARTIAL PAYMENT' : 'UNPAID'));
+
+        if(filter === 'UNPAID' && (currentStatus === 'FULLY PAID' || currentStatus === 'PAID')) return '';
+        
+        // SEARCH FILTER CONDITION
+        if(sq && !x.id.includes(sq) && !(x.doc || '').toUpperCase().includes(sq)) return '';
+
+        let statusBadgeClass = 'bg-slate-100 text-slate-800 border-slate-200';
+        if (currentStatus === 'FULLY PAID') statusBadgeClass = 'bg-emerald-100 text-emerald-800 border-emerald-200';
+        if (currentStatus === 'PARTIAL PAYMENT') statusBadgeClass = 'bg-orange-100 text-orange-800 border-orange-200';
+        if (currentStatus === 'UNPAID') statusBadgeClass = 'bg-rose-100 text-rose-800 border-rose-200';
+
+        return `<tr class="cursor-pointer hover:bg-slate-50/50 transition-colors" onclick="viewRelatedPayments(${i})">
+            <td class="font-black text-slate-700">${x.id}</td><td class="font-bold text-xs">${x.doc}</td><td class="text-slate-500 font-bold">₱${tot.toLocaleString()}</td>
+            <td class="text-emerald-600 font-black">₱${paid.toLocaleString()}</td>
+            <td class="text-rose-600 font-black">₱${bal.toLocaleString()}</td>
+            <td><span class="status-badge ${statusBadgeClass}">${currentStatus}</span></td>
+            <td>
+                <div class="flex gap-1">
+                    <button onclick="openEditPayStatus(${i}, event)" class="btn btn-orange !py-2 !px-3 text-[9px] rounded-lg shadow-sm tracking-widest">EDIT</button>
+                    <button onclick="del('o',${i},event)" class="btn btn-red !py-2 !px-3 text-[9px] rounded-lg shadow-sm tracking-widest">DEL</button>
                 </div>
-                <div class="card p-5 border-0 shadow-sm rounded-2xl flex flex-col justify-between bg-white border-l-4 border-l-orange-500">
-                    <h4 class="text-[10px] text-gray-500 font-bold uppercase tracking-widest leading-tight mb-2">Total Cases</h4>
-                    <h2 class="text-3xl font-black text-gray-800 kpi-val-orange">${S.o.length}</h2>
-                </div>
-                <div class="card p-5 border-0 shadow-sm rounded-2xl flex flex-col justify-between bg-white border-l-4 border-l-purple-500">
-                    <h4 class="text-[10px] text-gray-500 font-bold uppercase tracking-widest leading-tight mb-2">WIP (In Prod)</h4>
-                    <h2 class="text-3xl font-black text-gray-800 kpi-val-purple">${inProdCases}</h2>
-                </div>
-                <div class="card p-5 border-0 shadow-sm rounded-2xl flex flex-col justify-between bg-white border-l-4 border-l-emerald-500">
-                    <h4 class="text-[10px] text-gray-500 font-bold uppercase tracking-widest leading-tight mb-2">Discounted Volume</h4>
-                    <h2 class="text-3xl font-black text-gray-800 kpi-val-emerald">${discountedCases}</h2>
-                </div>
-            `;
-            let accContainer = document.getElementById('acc-stats-grid');
-            if(accContainer) accContainer.innerHTML = accStatsHtml;
+            </td>
+        </tr>`;
+    }).join('');
+    
+    if(tbody) tbody.innerHTML = rows || `<tr><td colspan="7" class="text-center p-8 text-slate-400 font-black tracking-widest uppercase text-[10px]">No ledger data found for this filter/search.</td></tr>`;
 
-            let filter = document.getElementById('acc-filter').value;
-            let sq = document.getElementById('acc-search')?.value.toUpperCase() || ''; // SEARCH LOGIC
-            let tbody = document.getElementById('b-receivables');
-            
-            let rows = S.o.slice(-100).reverse().map((x, i) => {
-               let tot = parseFloat(String(x.tot).replace(/,/g, '')) || 0;
-               let paid = x.amtPaid || 0;
-                
-                let currentStatus = x.manualPayStatus ? x.manualPayStatus : (bal <= 0 ? 'FULLY PAID' : (paid > 0 ? 'PARTIAL PAYMENT' : 'UNPAID'));
-
-                if(filter === 'UNPAID' && (currentStatus === 'FULLY PAID' || currentStatus === 'PAID')) return '';
-                
-                // SEARCH FILTER CONDITION
-                if(sq && !x.id.includes(sq) && !(x.doc || '').toUpperCase().includes(sq)) return '';
-
-                let statusBadgeClass = 'bg-slate-100 text-slate-800 border-slate-200';
-                if (currentStatus === 'FULLY PAID') statusBadgeClass = 'bg-emerald-100 text-emerald-800 border-emerald-200';
-                if (currentStatus === 'PARTIAL PAYMENT') statusBadgeClass = 'bg-orange-100 text-orange-800 border-orange-200';
-                if (currentStatus === 'UNPAID') statusBadgeClass = 'bg-rose-100 text-rose-800 border-rose-200';
-
-                return `<tr class="cursor-pointer hover:bg-slate-50/50 transition-colors" onclick="viewRelatedPayments(${i})">
-                    <td class="font-black text-slate-700">${x.id}</td><td class="font-bold text-xs">${x.doc}</td><td class="text-slate-500 font-bold">₱${tot.toLocaleString()}</td>
-                    <td class="text-emerald-600 font-black">₱${paid.toLocaleString()}</td>
-                    <td class="text-rose-600 font-black">₱${bal.toLocaleString()}</td>
-                    <td><span class="status-badge ${statusBadgeClass}">${currentStatus}</span></td>
-                    <td>
-                        <div class="flex gap-1">
-                            <button onclick="openEditPayStatus(${i}, event)" class="btn btn-orange !py-2 !px-3 text-[9px] rounded-lg shadow-sm tracking-widest">EDIT</button>
-                            <button onclick="del('o',${i},event)" class="btn btn-red !py-2 !px-3 text-[9px] rounded-lg shadow-sm tracking-widest">DEL</button>
-                        </div>
-                    </td>
-                </tr>`;
-            }).join('');
-            
-            if(tbody) tbody.innerHTML = rows || `<tr><td colspan="7" class="text-center p-8 text-slate-400 font-black tracking-widest uppercase text-[10px]">No ledger data found for this filter/search.</td></tr>`;
-
-            let bAcct = document.getElementById('b-acct');
-            if(bAcct) {
-                bAcct.innerHTML = S.o.filter(x => x.v && x.v !== 'NONE').map(x => `
-                    <tr class="border-b">
-                        <td class="font-black">${x.id}</td><td class="font-bold text-xs">${x.doc}</td><td class="font-bold text-xs">${x.pat}</td>
-                        <td class="text-purple-600 font-black bg-purple-50 px-2 py-1 rounded">${x.v}</td>
-                        <td class="text-[#189ad3] font-black">₱${x.tot}</td>
-                        <td><span class="bg-slate-100 px-3 py-1 rounded-lg border text-[10px] font-black tracking-widest uppercase">${x.st}</span></td>
-                    </tr>
-                `).join('') || `<tr><td colspan="6" class="text-center p-8 text-slate-400 font-black tracking-widest uppercase text-[10px]">No active discount utilizations detected.</td></tr>`;
-            }
-            
-            viewRelatedPayments(currentPayCaseIdx);
-        }
+    let bAcct = document.getElementById('b-acct');
+    if(bAcct) {
+        bAcct.innerHTML = S.o.filter(x => x.v && x.v !== 'NONE').map(x => `
+            <tr class="border-b">
+                <td class="font-black">${x.id}</td><td class="font-bold text-xs">${x.doc}</td><td class="font-bold text-xs">${x.pat}</td>
+                <td class="text-purple-600 font-black bg-purple-50 px-2 py-1 rounded">${x.v}</td>
+                <td class="text-[#189ad3] font-black">₱${x.tot}</td>
+                <td><span class="bg-slate-100 px-3 py-1 rounded-lg border text-[10px] font-black tracking-widest uppercase">${x.st}</span></td>
+            </tr>
+        `).join('') || `<tr><td colspan="6" class="text-center p-8 text-slate-400 font-black tracking-widest uppercase text-[10px]">No active discount utilizations detected.</td></tr>`;
+    }
+    
+    viewRelatedPayments(currentPayCaseIdx);
+}
 
         function viewRelatedPayments(idx) {
             currentPayCaseIdx = idx;
@@ -2477,33 +2498,37 @@ async function del(k, i, e) {
         }
 
         async function delPayment(caseIdx, payIdx) {
-            // NO CONFIRM POP-UP. INSTANT SILENT DELETE.
-            
-            // 1. ENGAGE LOCKS
-            window.isSavingOrder = true;
-            window.isSyncing = true;
-            window.lastSaveTime = Date.now();
+    window.isSavingOrder = true; window.isSyncing = true; window.lastSaveTime = Date.now();
 
-            let p = S.o[caseIdx].payments[payIdx];
-            S.o[caseIdx].amtPaid -= p.amt;
-            let removed = S.o[caseIdx].payments.splice(payIdx, 1)[0];
-            
-            S.trash.push({ k: 'payment', item: removed, caseId: S.o[caseIdx].id, ts: new Date().toLocaleString() });
-            
-            // 2. WAIT FOR CLOUD
-            await sv('o');
-            await sv('trash');
+    let order = S.o[caseIdx];
+    let p = order.payments[payIdx];
+    
+    order.amtPaid -= p.amt;
+    let removed = order.payments.splice(payIdx, 1)[0];
+    
+    if (!S.trash) S.trash = [];
+    S.trash.push({ k: 'payment', item: removed, caseId: order.id, ts: new Date().toLocaleString() });
+    
+    try {
+        const { error } = await _supabase.from('dap_job_orders').update({
+            amount_paid: order.amtPaid
+        }).eq('id', order.id);
+        
+        if (error) alert("SUPABASE BLOCKED PAYMENT DELETE! Error: " + error.message);
 
-            // 3. RENEW LOCK & UPDATE UI
-            window.lastSaveTime = Date.now();
-            rAcc();
-            
-            // 4. HOLD SHIELD
-            setTimeout(() => { 
-                window.isSavingOrder = false; 
-                window.isSyncing = false;
-            }, 4000);
-        }
+        // Backup update to dap_store JSON blob
+        await _supabase.from('dap_store').upsert({ id: 'dap_v4_o', data: S.o });
+    } catch(err) {
+        console.error(err);
+    }
+
+    await sv('trash');
+    
+    window.lastSaveTime = Date.now();
+    rAcc();
+    
+    setTimeout(() => { window.isSavingOrder = false; window.isSyncing = false; }, 4000);
+}
 
         async function saveProdDetails() {
             if (selectedProdIdx === -1 || !S.o[selectedProdIdx]) return;
@@ -3351,7 +3376,8 @@ function saveOrd() {
         let safeId = c.value.replace(/[^a-zA-Z0-9]/g, '');
         let pQtyInput = document.getElementById('qty-' + safeId);
         pQtys[c.value] = pQtyInput ? (parseInt(pQtyInput.value) || 1) : 1;
-    });    if (prs.length === 0) { alert("Protocol Error: At least one product specification is required!"); return false; }
+    });    
+    if (prs.length === 0) { alert("Protocol Error: At least one product specification is required!"); return false; }
 
     let tths = [];
     document.querySelectorAll('.tooth-btn.active').forEach(t => tths.push(t.getAttribute('data-val')));
@@ -3371,7 +3397,7 @@ function saveOrd() {
         let stlNameEl = document.getElementById('o-stl-name');
         let manualShade = document.getElementById('o-shade-manual').value.toUpperCase();
         
-       let obj = {
+        let obj = {
             id: document.getElementById('o-id').value.toUpperCase(), // Allows manual
             pic: document.getElementById('o-pic').value,
             pat: document.getElementById('o-pat').value.toUpperCase(),
@@ -3385,7 +3411,7 @@ function saveOrd() {
 
             shade: document.getElementById('o-shade').value,
             shadeManual: manualShade,
-            shadeArr: currentOrderShades, //
+            shadeArr: currentOrderShades, 
 
             qty: document.getElementById('o-qty').value,
             v: document.getElementById('o-v').value,
@@ -3418,11 +3444,13 @@ function saveOrd() {
                 initFullCal();
             }
             
+            // FIX: Close modals and unlock UI before the alert fires
+            closeModals();
+            window.isSavingOrder = false;
+            allBtns.forEach(b => { b.disabled = false; b.style.pointerEvents = 'auto'; b.style.opacity = '1'; });
+
             setTimeout(() => {
                 alert("JOB ORDER COMMITTED TO SYSTEM.");
-                closeModals();
-                window.isSavingOrder = false;
-                allBtns.forEach(b => { b.disabled = false; b.style.pointerEvents = 'auto'; b.style.opacity = '1'; });
             }, 50);
         });
         
@@ -3726,7 +3754,17 @@ function execPrint() {
             }
         }
         
-        doc.text(descText, 78, startY);
+        // --- NEW TEXT WRAPPING LOGIC ---
+        // 112 is the maximum width in millimeters before it hits the right border
+        let splitDesc = doc.splitTextToSize(descText, 112); 
+        
+        // If the text breaks into 2 lines, we nudge it up slightly (startY - 1.5) 
+        // so it doesn't overlap with the horizontal table lines below it.
+        let adjustedY = splitDesc.length > 1 ? startY - 1.5 : startY;
+        
+        doc.text(splitDesc, 78, adjustedY);
+        // -------------------------------
+
         startY += 8;
     }
 
@@ -3815,33 +3853,27 @@ function execPrint() {
             }
         }
 
-   async function delOpt(t) {
+  async function delOpt(t) {
     if (t === 'shade') {
         if (!S.shades || S.shades.length === 0) return alert("No custom shades available to delete.");
         let toDel = prompt("Enter EXACT name of the Shade to delete:\n\n" + S.shades.join('\n')).toUpperCase();
         
         if (toDel && S.shades.includes(toDel)) {
-            // 1. Remove it from local memory immediately
             S.shades = S.shades.filter(x => x !== toDel);
-            
-            // 2. Update the dropdown on the screen
             popSel('o-shade', S.shades);
             
-            // 3. BYPASS sv() AND DIRECTLY OVERWRITE SUPABASE DATABASE
             try {
-                await _supabase.from('dap_store').upsert({ id: 'dap_v4_shades', data: S.shades });
-                
-                // 4. Update the side panel dropdown if it is open
-                let pdShade = document.getElementById('pd-shade');
-                if (pdShade) {
-                    pdShade.innerHTML = `<option value="">-- SELECT SHADE --</option>` + S.shades.map(s => `<option value="${s}">${s}</option>`).join('');
+                const { error } = await _supabase.from('dap_store').upsert({ id: 'dap_v4_shades', data: S.shades });
+                if (error) {
+                    alert("SUPABASE BLOCKED THE DELETE! Error: " + error.message);
+                } else {
+                    let pdShade = document.getElementById('pd-shade');
+                    if (pdShade) pdShade.innerHTML = `<option value="">-- SELECT SHADE --</option>` + S.shades.map(s => `<option value="${s}">${s}</option>`).join('');
+                    alert(toDel + " has been PERMANENTLY deleted from the cloud.");
                 }
-                
-                alert(toDel + " has been PERMANENTLY deleted from the cloud.");
             } catch (err) {
-                alert("Cloud connection error. But it is removed from your screen.");
+                alert("Cloud connection error.");
             }
-            
         } else if (toDel) {
             alert("Shade not found. Spelling must be exact.");
         }
@@ -3984,38 +4016,27 @@ function execPrint() {
             }
         }
         // NEW: Function to delete a custom technician
-        async function delTech(techName) {
-            if (!techName || techName.trim() === "") return alert("Please select a technician from the dropdown first to delete them.");
-            
-            if (S.u.find(u => u.n === techName)) return alert("Protocol Denial: You cannot delete a registered Staff/User here. Go to Gatekeeper Protocol to manage users.");
-            if (!S.techs.includes(techName)) return alert("Technician not found in the custom list.");
+       async function delTech(techName) {
+    if (!techName || techName.trim() === "") return alert("Please select a technician from the dropdown first to delete them.");
+    if (S.u.find(u => u.n === techName)) return alert("Protocol Denial: You cannot delete a registered Staff/User here. Go to Gatekeeper Protocol to manage users.");
+    if (!S.techs.includes(techName)) return alert("Technician not found in the custom list.");
 
-            if (confirm(`Are you sure you want to permanently delete Technician: ${techName}?`)) {
-                // 1. ENGAGE SHIELD LOCKS
-                window.isSavingOrder = true;
-                window.isSyncing = true;
-                window.lastSaveTime = Date.now();
+    if (confirm(`Are you sure you want to permanently delete Technician: ${techName}?`)) {
+        window.isSavingOrder = true; window.isSyncing = true; window.lastSaveTime = Date.now();
 
-                // 2. Remove the tech from the local array
-                S.techs = S.techs.filter(t => t !== techName);
-                
-                // 3. WAIT FOR CLOUD OVERWRITE
-                await sv('techs');
-                
-                // 4. RENEW LOCK & UPDATE UI
-                window.lastSaveTime = Date.now();
-                rProd();
-                if (selectedProdIdx !== -1) renderProdDetails();
+        S.techs = S.techs.filter(t => t !== techName);
+        
+        const { error } = await _supabase.from('dap_store').upsert({ id: 'dap_v4_techs', data: S.techs });
+        if (error) alert("SUPABASE BLOCKED THE DELETE! Error: " + error.message);
+        
+        window.lastSaveTime = Date.now();
+        rProd();
+        if (selectedProdIdx !== -1) renderProdDetails();
 
-                // 5. KEEP SHIELD UP FOR 4 SECONDS
-                setTimeout(() => {
-                    window.isSavingOrder = false;
-                    window.isSyncing = false;
-                }, 4000);
-                
-                alert(`Technician ${techName} has been purged from the system.`);
-            }
-        }
+        setTimeout(() => { window.isSavingOrder = false; window.isSyncing = false; }, 4000);
+        if(!error) alert(`Technician ${techName} has been purged from the system.`);
+    }
+}
 
         function updateTech(caseIdx, newTechValue) {
             if(caseIdx >= 0 && S.o[caseIdx]) {
@@ -4616,18 +4637,20 @@ function execPrint() {
             let body = document.getElementById('chat-body');
             body.scrollTop = body.scrollHeight;
         }
-        async function delChat(msgId) {
-            if(!confirm("Delete this transmission permanently?")) return;
-            
-            const { data } = await _supabase.from('dap_store').select('data').eq('id', 'dap_v4_msg').single();
-            let liveMsgs = data ? data.data : [...S.msg];
-            
-            liveMsgs = liveMsgs.filter((x, i) => (x.id || `OLD-MSG-${i}`) !== msgId);
-            
-            await _supabase.from('dap_store').upsert({ id: 'dap_v4_msg', data: liveMsgs });
-            S.msg = liveMsgs;
-            rChat();
-        }
+       async function delChat(msgId) {
+    if(!confirm("Delete this transmission permanently?")) return;
+    
+    const { data } = await _supabase.from('dap_store').select('data').eq('id', 'dap_v4_msg').single();
+    let liveMsgs = data ? data.data : [...S.msg];
+    
+    liveMsgs = liveMsgs.filter((x, i) => (x.id || `OLD-MSG-${i}`) !== msgId);
+    
+    const { error } = await _supabase.from('dap_store').upsert({ id: 'dap_v4_msg', data: liveMsgs });
+    if (error) alert("SUPABASE BLOCKED THE DELETE! Error: " + error.message);
+
+    S.msg = liveMsgs;
+    rChat();
+}
 
         async function reactChat(msgId, emoji) {
             const { data } = await _supabase.from('dap_store').select('data').eq('id', 'dap_v4_msg').single();
@@ -4750,12 +4773,8 @@ function execPrint() {
     if(BASE_MODS.includes(sel)) return alert("Protocol Denial: Core system modules cannot be deleted.");
     
     if(confirm(`WARNING: Permanently purge the dynamic module '${sel}'?`)) {
-        // 1. ENGAGE SHIELDS
-        window.isSavingOrder = true;
-        window.isSyncing = true;
-        window.lastSaveTime = Date.now();
+        window.isSavingOrder = true; window.isSyncing = true; window.lastSaveTime = Date.now();
 
-        // 2. WIPE FROM LOCAL STATE
         S.dynMods = S.dynMods.filter(m => m !== sel);
         delete S.dynModContent[sel];
         
@@ -4766,23 +4785,19 @@ function execPrint() {
         let el = document.getElementById('p-' + sel);
         if(el) el.remove();
         
-        // 3. OVERWRITE CLOUD DIRECTLY
-        await _supabase.from('dap_store').upsert({ id: 'dap_v4_dynMods', data: S.dynMods });
-        await _supabase.from('dap_store').upsert({ id: 'dap_v4_dynModContent', data: S.dynModContent });
-        await sv('u'); // Save user clearance updates
+        const res1 = await _supabase.from('dap_store').upsert({ id: 'dap_v4_dynMods', data: S.dynMods });
+        const res2 = await _supabase.from('dap_store').upsert({ id: 'dap_v4_dynModContent', data: S.dynModContent });
         
-        // 4. RENEW LOCKS & UPDATE UI
+        if (res1.error || res2.error) alert("SUPABASE BLOCKED THE DELETE! Check your RLS policies.");
+        
+        await sv('u'); 
+        
         window.lastSaveTime = Date.now();
         initNav();
         populateSandboxSelect();
         
-        // 5. RELEASE SHIELDS
-        setTimeout(() => {
-            window.isSavingOrder = false;
-            window.isSyncing = false;
-        }, 4000);
-
-        alert("Module Permanently Purged.");
+        setTimeout(() => { window.isSavingOrder = false; window.isSyncing = false; }, 4000);
+        if (!res1.error && !res2.error) alert("Module Permanently Purged.");
     }
 }
 
