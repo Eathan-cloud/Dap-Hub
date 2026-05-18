@@ -1326,8 +1326,8 @@
         window.isSyncing = false;
         window.lastSaveTime = 0; 
 
-        // --- MULTI-USER SUPABASE SAVE FUNCTION (SMART MERGE WITH DELETE SUPPORT) ---
-     async function sv(targetKey = null) {
+    // --- MULTI-USER SUPABASE SAVE FUNCTION (SMART MERGE RACE CONDITION FIX) ---
+async function sv(targetKey = null) {
     window.isSavingOrder = true;
     window.lastSaveTime = Date.now(); 
     window.isSyncing = true;
@@ -1342,49 +1342,40 @@
     }
 
     try {
-        // FIX 1: If targetKey is null (like in Accounting/Production), save everything to prevent data loss.
         let keysToSave = targetKey ? [targetKey] : ['o', 'd', 'sys', 'v', 'pr', 'techs', 'u'];
 
         for (let key of keysToSave) {
             if (key === 'o') {
-                // Save FULL data to the JSON blob to guarantee nested arrays (payments, remarks) are kept
-                await _supabase.from('dap_store').upsert({ id: 'dap_v4_o', data: S.o });
-
-                // Bulk upsert to relational table as a mirror
+                // SAVE DIRECTLY TO RELATIONAL TABLE
                 let mappedOrders = S.o.map(o => ({
                     id: o.id,
-                    client_id: o.doc,
-                    patient_name: o.pat,
-                    status: o.st,
+                    client_id: o.doc || null,
+                    patient_name: o.pat || null,
+                    status: o.st || null,
                     total_cost: parseFloat(String(o.tot).replace(/,/g, '')) || 0,
                     amount_paid: o.amtPaid || 0,
                     received_date: o.date || new Date().toISOString(),
                     target_date: o.due || null,
-                    products: o.prods || [],
-                    teeth: o.teeth || [],
-                    assigned_tech: o.asn || null
+                    raw_data: o // Store the JSON directly inside the row
                 }));
                 if(mappedOrders.length > 0) {
                     await _supabase.from('dap_job_orders').upsert(mappedOrders);
                 }
             } 
             else if (key === 'd') {
-                await _supabase.from('dap_store').upsert({ id: 'dap_v4_d', data: S.d });
-
+                // SAVE DIRECTLY TO RELATIONAL TABLE
                 let mappedClients = S.d.map(c => ({
                     id: c.id,
                     name: c.n,
-                    clinic: c.clinic,
-                    phone: c.phone,
-                    email: c.email,
-                    address: c.addr,
-                    status: c.status || 'ACTIVE'
+                    clinic: c.clinic || null,
+                    raw_data: c // Store the JSON directly inside the row
                 }));
                 if(mappedClients.length > 0) {
                     await _supabase.from('dap_clients').upsert(mappedClients);
                 }
-            }
+            } 
             else {
+                // Keep settings inside the standard store
                 await _supabase.from('dap_store').upsert({ id: 'dap_v4_' + key, data: S[key] });
             }
         }
@@ -1399,28 +1390,20 @@
         window.isSyncing = false; 
     }, 1000); 
 }
-     // --- ASYNC BOOTLOADER (NEW RELATIONAL DB VERSION WITH FALLBACK) ---
+    // --- ASYNC BOOTLOADER (SECURED INITIALIZATION) ---
 async function initApp() {
     let session = sessionStorage.getItem('dap_session');
     let isLoggedIn = false;
+    let parsed = null;
     
-    // 1. CHECK THE TOKEN INSTANTLY
+    // 1. SILENTLY CHECK TOKEN VALIDITY
     if(session) {
         try {
-            let parsed = JSON.parse(session);
+            parsed = JSON.parse(session);
             let currentTime = Date.now();
             let minsPassed = (currentTime - (parsed.ts || 0)) / (1000 * 60);
             
-            if(minsPassed <= 5) {
-                document.getElementById('auth-layer').style.display = 'none'; 
-                document.getElementById('auth-layer').classList.add('hidden');
-                document.getElementById('app-shell').classList.remove('hidden');
-                document.getElementById('app-shell').style.display = 'flex';
-                
-                S.curr = { n: parsed.n, p: parsed.p, d: 'LOADING', s: 'active', m: BASE_MODS }; 
-                parsed.ts = currentTime; 
-                sessionStorage.setItem('dap_session', JSON.stringify(parsed));
-                
+            if(minsPassed <= 60) { // Keep session alive for 60 minutes of inactivity
                 isLoggedIn = true;
             } else {
                 sessionStorage.removeItem('dap_session');
@@ -1428,85 +1411,62 @@ async function initApp() {
         } catch(e) {
             sessionStorage.removeItem('dap_session');
         }
-    } else {
-         document.getElementById('auth-layer').classList.remove('hidden');
-         document.getElementById('auth-layer').style.display = 'flex';
+    } 
+
+    // 2. BLOCK UNAUTHENTICATED ACCESS IMMEDIATELY
+    if (!isLoggedIn) {
+        document.getElementById('auth-layer').classList.remove('hidden');
+        document.getElementById('auth-layer').style.display = 'flex';
+        
+        let bootScreen = document.getElementById('system-boot-screen');
+        if(bootScreen) {
+            bootScreen.style.opacity = "0";
+            setTimeout(() => bootScreen.remove(), 300);
+        }
+        return; // HALT SCRIPT: Prevents the browser from downloading data
     }
 
+    // 3. FETCH DATA ONLY FOR VERIFIED SESSIONS
     try {
-        // 2. FETCH DATA FROM THE SETTINGS TABLE AS THE PRIMARY SOURCE OF TRUTH
-        const [usersRes, storeRes] = await Promise.all([
-            _supabase.from('dap_users').select('*'),
-            _supabase.from('dap_store').select('*')
-        ]);
-
-        let data = storeRes.data;
-        let map = {};
-        if (data && data.length > 0) {
-            data.forEach(row => map[row.id] = row.data);
-        }
-
-        // A. MAP CORE DATA 
-        if (usersRes.data && usersRes.data.length > 0) {
-            S.u = usersRes.data.map(u => ({ n: u.username, p: u.password, d: u.role, s: u.status, m: u.modules }));
-        } else {
-            S.u = map['dap_v4_u'] || [];
-        }
-
-        // FIX 2: Load entirely from the JSON blob to prevent losing nested arrays (payments, remarks, tech assignments)
-        S.d = map['dap_v4_d'] || [];
-        S.o = map['dap_v4_o'] || [];
-
-        // B. MAP OLD SETTINGS & CONFIGS
-        S.salesTeam = map['dap_v4_salesTeam'] || S.salesTeam;
-        S.pipeline = map['dap_v4_pipeline'] || S.pipeline;
-        S.pr = map['dap_v4_pr'] || S.pr;
-        S.prData = map['dap_v4_prData'] || S.prData;
-        S.v = map['dap_v4_v'] || S.v;
-        S.locs = map['dap_v4_locs'] || S.locs;
-        S.stats = map['dap_v4_stats'] || S.stats;
-        S.ctypes = map['dap_v4_ctypes'] || S.ctypes;
-        S.shades = map['dap_v4_shades'] || S.shades;
-        S.fonts = map['dap_v4_fonts'] || S.fonts;
-        S.trash = map['dap_v4_trash'] || S.trash;
-        S.dynMods = map['dap_v4_dynMods'] || S.dynMods;
-        S.dynModContent = map['dap_v4_dynModContent'] || S.dynModContent;
-        S.techs = map['dap_v4_techs'] || S.techs;
-        S.sys = map['dap_v4_sys'] || S.sys;
-        S.msg = map['dap_v4_msg'] || S.msg;
-
-    } catch (e) {
-        console.warn("Silent sync delayed or failed:", e);
-    }
-    // 3. ATTACH REAL PROFILE AND INITIALIZE
-    if (isLoggedIn && session) {
-        let parsed = JSON.parse(session);
+        await fetchSystemData();
+        
         let realAcc = S.u.find(x => x.n === parsed.n && String(x.p) === String(parsed.p));
         
         if (realAcc && realAcc.s === 'active') {
             S.curr = realAcc;
+            parsed.ts = Date.now(); // Refresh token
+            sessionStorage.setItem('dap_session', JSON.stringify(parsed));
+
+            document.getElementById('auth-layer').style.display = 'none'; 
+            document.getElementById('auth-layer').classList.add('hidden');
+            document.getElementById('app-shell').classList.remove('hidden');
+            document.getElementById('app-shell').style.display = 'flex';
+            
             initNav(); initChat(); populateSandboxSelect(); checkMaintenance();
             startIdleTracking();
         } else {
             sessionStorage.removeItem('dap_session');
-            isLoggedIn = false;
-            document.getElementById('auth-layer').classList.remove('hidden');
-            document.getElementById('auth-layer').style.display = 'flex';
-            document.getElementById('app-shell').classList.add('hidden');
-            document.getElementById('app-shell').style.display = 'none';
+            location.reload();
         }
+
+    } catch (e) {
+        console.warn("Silent sync failed:", e);
+        sessionStorage.removeItem('dap_session');
+        location.reload();
     }
 
+    // CHECK DARK MODE
     let savedBg = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim();
     if(savedBg === '#0f172a') document.body.classList.add('dark-mode');
     
-    if(!isLoggedIn && (S.u.length === 0 || (S.u.length === 1 && S.u[0].d === 'SYSTEM ARCHITECT'))) {
+    // ARCHITECT FALLBACK
+    if(S.u.length === 0 || (S.u.length === 1 && S.u[0].d === 'SYSTEM ARCHITECT')) {
         alert('CRITICAL: System Architect Initialization Required.');
         document.getElementById('r-role').value = 'ADMIN';
         toggleReg(true);
     }
 
-    // 4. FADE OUT AND DESTROY BOOT SCREEN
+    // DESTROY BOOT SCREEN
     let bootScreen = document.getElementById('system-boot-screen');
     if(bootScreen) {
         bootScreen.style.opacity = "0";
@@ -1564,33 +1524,135 @@ async function initApp() {
         }
 
         setInterval(checkMaintenance, 3000);
-        function login(){
-            let u=document.getElementById('l-user').value.toUpperCase();
-            let p=document.getElementById('l-pass').value;
-            
-            let acc=S.u.find(x => x.n === u && String(x.p) === String(p));
-            
-            if(!acc) return alert('No User Found. Check Callsign/Key.');
-            if(acc.s !== 'active') return alert('Access Restricted. Status: ' + acc.s.toUpperCase());
-            
-            // Generate Local Session WITH TIMESTAMP
-            sessionStorage.setItem('dap_session', JSON.stringify({
-                n: acc.n, 
-                p: String(acc.p), 
-                ts: Date.now() 
-            }));
+  
+// --- CENTRALIZED DATA FETCHING (SECURED) ---
+async function fetchSystemData() {
+   const [usersRes, storeRes, ordersRes, clientsRes] = await Promise.all([
+    // FIXED: Added 'password' to the select query so sessions don't expire on refresh
+    _supabase.from('dap_users').select('username, password, role, status, modules'),
+    _supabase.from('dap_store').select('*'),
+    _supabase.from('dap_job_orders').select('raw_data').order('received_date', { ascending: false }).limit(10000),
+    _supabase.from('dap_clients').select('raw_data')
+]);
 
-            S.curr=acc;
-            
-            // FIX: Force kill the login screen so it doesn't get stuck
-            document.getElementById('auth-layer').style.display = 'none';
-            document.getElementById('auth-layer').classList.add('hidden');
-            document.getElementById('app-shell').classList.remove('hidden');
-            document.getElementById('app-shell').style.display = 'flex';
-            
-            initNav(); initChat(); populateSandboxSelect(); checkMaintenance();
-            startIdleTracking(); // START THE IDLE TIMER
+    let data = storeRes.data;
+    let map = {};
+    if (data && data.length > 0) {
+        data.forEach(row => map[row.id] = row.data);
+    }
+
+    if (usersRes.data && usersRes.data.length > 0) {
+        // FIXED: Properly mapped p to u.password
+        S.u = usersRes.data.map(u => ({ n: u.username, p: u.password, d: u.role, s: u.status, m: u.modules }));
+    } else {
+        let oldUsers = map['dap_v4_u'] || [];
+        S.u = oldUsers.map(u => ({ n: u.n, p: u.p, d: u.d, s: u.s, m: u.m })); 
+    }
+
+    // READ FROM REAL DATABASE ROWS INSTEAD OF THE BLOB
+    S.o = (ordersRes.data && ordersRes.data.length > 0) ? ordersRes.data.map(row => row.raw_data) : (map['dap_v4_o'] || []);
+    S.d = (clientsRes.data && clientsRes.data.length > 0) ? clientsRes.data.map(row => row.raw_data) : (map['dap_v4_d'] || []);
+
+    S.salesTeam = map['dap_v4_salesTeam'] || S.salesTeam;
+    S.pipeline = map['dap_v4_pipeline'] || S.pipeline;
+    S.pr = map['dap_v4_pr'] || S.pr;
+    S.prData = map['dap_v4_prData'] || S.prData;
+    S.v = map['dap_v4_v'] || S.v;
+    S.locs = map['dap_v4_locs'] || S.locs;
+    S.stats = map['dap_v4_stats'] || S.stats;
+    S.ctypes = map['dap_v4_ctypes'] || S.ctypes;
+    S.shades = map['dap_v4_shades'] || S.shades;
+    S.fonts = map['dap_v4_fonts'] || S.fonts;
+    S.trash = map['dap_v4_trash'] || S.trash;
+    S.dynMods = map['dap_v4_dynMods'] || S.dynMods;
+    S.dynModContent = map['dap_v4_dynModContent'] || S.dynModContent;
+    S.techs = map['dap_v4_techs'] || S.techs;
+    S.sys = map['dap_v4_sys'] || S.sys;
+    S.msg = map['dap_v4_msg'] || S.msg;
+}
+        // --- SECURE AUTHENTICATION PROTOCOL ---
+async function login() {
+    let u = document.getElementById('l-user').value.toUpperCase();
+    let p = document.getElementById('l-pass').value;
+    
+    if(!u || !p) return alert('Credentials required.');
+
+    let btn = document.querySelector('#login-form button');
+    let oldText = btn.innerText;
+    btn.innerText = "AUTHENTICATING...";
+    btn.disabled = true;
+
+    try {
+        let acc = null;
+
+        // Step 1: 
+        const { data: relAcc } = await _supabase
+            .from('dap_users')
+            .select('*')
+            .eq('username', u)
+            .eq('password', p)
+            .maybeSingle();
+
+        if (relAcc) {
+            acc = { n: relAcc.username, p: relAcc.password, d: relAcc.role, s: relAcc.status, m: relAcc.modules };
+        } else {
+            // Step 2: FALLBACK (Kung wala pa sa bagong table, check sa lumang JSON Blob)
+            const { data: storeRes } = await _supabase.from('dap_store').select('data').eq('id', 'dap_v4_u').single();
+            if (storeRes && storeRes.data) {
+                let oldAcc = storeRes.data.find(x => x.n === u && String(x.p) === String(p));
+                if (oldAcc) {
+                    acc = oldAcc;
+                    // AUTO-MIGRATE: Ilipat agad sa bagong secure table para next time, dun na dadaan!
+                    await _supabase.from('dap_users').upsert({
+                        username: oldAcc.n,
+                        password: oldAcc.p,
+                        role: oldAcc.d,
+                        status: oldAcc.s,
+                        modules: oldAcc.m || ['dashboard']
+                    });
+                }
+            }
         }
+
+        if (!acc) {
+            btn.innerText = oldText;
+            btn.disabled = false;
+            return alert('No User Found. Check Callsign/Key.');
+        }
+        if (acc.s !== 'active') {
+            btn.innerText = oldText;
+            btn.disabled = false;
+            return alert('Access Restricted. Status: ' + acc.s.toUpperCase());
+        }
+
+        btn.innerText = "DOWNLOADING SYSTEM DATA...";
+        
+        sessionStorage.setItem('dap_session', JSON.stringify({
+            n: acc.n, 
+            p: String(acc.p), 
+            ts: Date.now() 
+        }));
+
+        S.curr = acc;
+        
+        await fetchSystemData();
+        
+        document.getElementById('auth-layer').style.display = 'none';
+        document.getElementById('auth-layer').classList.add('hidden');
+        document.getElementById('app-shell').classList.remove('hidden');
+        document.getElementById('app-shell').style.display = 'flex';
+        
+        initNav(); initChat(); populateSandboxSelect(); checkMaintenance();
+        startIdleTracking();
+
+    } catch (err) {
+        console.error(err);
+        alert('Network authentication error. Please try again.');
+    }
+
+    btn.innerText = oldText;
+    btn.disabled = false;
+}
         
         function register(){
             let n=document.getElementById('r-name').value.toUpperCase();
@@ -1856,16 +1918,16 @@ async function del(k, i, e) {
         S.trash.push({ k: k, item: item, ts: new Date().toLocaleString() });
         
         try {
+            // FIXED: DELETE DIRECTLY FROM REAL TABLES AND WIPE THE GHOST DATA IN THE BLOB
             if (k === 'o' && item.id) {
-                // Delete sa bagong table
                 await _supabase.from('dap_job_orders').delete().eq('id', item.id);
-                // I-update ang dap_store para hindi bumalik pag nag-sync
                 await _supabase.from('dap_store').upsert({ id: 'dap_v4_o', data: S.o });
             } else if (k === 'd' && item.id) {
-                // Delete sa bagong table
                 await _supabase.from('dap_clients').delete().eq('id', item.id);
-                // I-update ang dap_store para hindi bumalik pag nag-sync
                 await _supabase.from('dap_store').upsert({ id: 'dap_v4_d', data: S.d });
+            } else if (k === 'u' && item.n) {
+                await _supabase.from('dap_users').delete().eq('username', item.n);
+                await _supabase.from('dap_store').upsert({ id: 'dap_v4_u', data: S.u });
             } else {
                 await sv(k); 
             }
@@ -1900,24 +1962,27 @@ async function del(k, i, e) {
             let currMonth = now.getMonth();
             let currYear = now.getFullYear();
 
-            let casesThisMonth = S.o.filter(x => {
+            // KUKUNIN LANG NATIN ANG MGA ACTIVE CASES (Walang VOID)
+            let activeCases = S.o.filter(x => x.st !== 'VOID' && x.st !== 'CANCELLED');
+
+            let casesThisMonth = activeCases.filter(x => {
                 if(!x.date) return false;
                 let d = new Date(x.date);
                 return d.getMonth() === currMonth && d.getFullYear() === currYear;
             });
 
             let salesThisMonth = casesThisMonth.reduce((a,b) => a + (parseFloat(String(b.tot).replace(/,/g,'')) || 0), 0);
-            let activeDocsCount = new Set(S.o.map(x => x.doc)).size;
-            let inProdCasesCount = S.o.filter(x => x.st === 'In Production' || x.st === 'IN PRODUCTION').length;
-            let deliveredCasesCount = S.o.filter(x => x.st === 'Delivered' || x.st === 'DELIVERED').length;
+            let activeDocsCount = new Set(activeCases.map(x => x.doc)).size;
+            let inProdCasesCount = activeCases.filter(x => x.st === 'In Production' || x.st === 'IN PRODUCTION').length;
+            let deliveredCasesCount = activeCases.filter(x => x.st === 'Delivered' || x.st === 'DELIVERED').length;
             
-            let totalOutBal = S.o.reduce((sum, x) => {
+            let totalOutBal = activeCases.reduce((sum, x) => {
                 let tot = parseFloat(String(x.tot).replace(/,/g, '')) || 0;
                 let paid = x.amtPaid || 0;
                 return sum + (tot - paid);
             }, 0);
 
-            let totalSalesOverall = S.o.reduce((sum, x) => sum + (parseFloat(String(x.tot).replace(/,/g, '')) || 0), 0);
+            let totalSalesOverall = activeCases.reduce((sum, x) => sum + (parseFloat(String(x.tot).replace(/,/g, '')) || 0), 0);
 
             document.getElementById('stats-grid').innerHTML = `
                 <div class="card p-5 border border-slate-100 shadow-sm rounded-2xl bg-white flex flex-col justify-between hover:-translate-y-1 transition-transform">
@@ -1998,9 +2063,9 @@ async function del(k, i, e) {
                 });
             }
 
-            let cNew = S.o.filter(x => x.st === 'New' || x.st === 'NEW').length;
-            let cProd = S.o.filter(x => x.st === 'In Production' || x.st === 'IN PRODUCTION').length;
-            let cComp = S.o.filter(x => x.st === 'Completed' || x.st === 'COMPLETED' || x.st === 'DONE' || x.st === 'Delivered' || x.st === 'DELIVERED').length;
+            let cNew = activeCases.filter(x => x.st === 'New' || x.st === 'NEW').length;
+            let cProd = activeCases.filter(x => x.st === 'In Production' || x.st === 'IN PRODUCTION').length;
+            let cComp = activeCases.filter(x => x.st === 'Completed' || x.st === 'COMPLETED' || x.st === 'DONE' || x.st === 'Delivered' || x.st === 'DELIVERED').length;
 
             const ctxPie = document.getElementById('chartMainPie')?.getContext('2d');
             if(ctxPie) {
@@ -2031,8 +2096,8 @@ async function del(k, i, e) {
             twoMonthsAgo.setMonth(twoMonthsAgo.getMonth() - 2);
             
             let inactiveHtml = '';
-            S.d.forEach((doc, i) => {
-                let docCases = S.o.filter(o => o.doc === doc.n);
+            S.d.forEach((doc) => {
+                let docCases = activeCases.filter(o => o.doc === doc.n);
                 let latestDate = new Date(0);
                 if(docCases.length > 0) {
                     let dates = docCases.map(c => new Date(c.date || 0));
@@ -2040,9 +2105,10 @@ async function del(k, i, e) {
                 }
                 
                 if(latestDate < twoMonthsAgo) {
+                    let docIdx = S.d.findIndex(d => d.n === doc.n);
                     let lastActive = docCases.length ? latestDate.toISOString().split('T')[0] : 'NEVER SUBMITTED';
                     inactiveHtml += `
-                        <div class="p-3 bg-rose-50/50 border border-rose-100 rounded-xl flex justify-between items-center cursor-pointer hover:bg-rose-100 transition-colors" onclick="go('clinic_support'); switchCSTab('docs'); setTimeout(()=>vDoc(${i}), 300)">
+                        <div class="p-3 bg-rose-50/50 border border-rose-100 rounded-xl flex justify-between items-center cursor-pointer hover:bg-rose-100 transition-colors" onclick="go('clinic_support'); switchCSTab('docs'); setTimeout(()=>vDoc(${docIdx}), 300)">
                             <span class="font-black text-xs text-rose-900">${doc.n}</span>
                             <span class="text-[9px] text-rose-600 font-black tracking-widest bg-white px-2 py-1 rounded-md shadow-sm">ACTIVE: ${lastActive}</span>
                         </div>
@@ -2051,7 +2117,7 @@ async function del(k, i, e) {
             });
             document.getElementById('alert-inactive-docs').innerHTML = inactiveHtml || '<p class="text-xs text-slate-400 font-bold p-6 text-center border-2 border-dashed border-slate-200 rounded-xl">All monitored clients are active.</p>';
 
-            let unpaidOngoing = S.o.filter(x => {
+            let unpaidOngoing = activeCases.filter(x => {
                 let isOngoing = (x.st !== 'DONE' && x.st !== 'Completed' && x.st !== 'Delivered');
                 let bal = (parseFloat(String(x.tot).replace(/,/g, '')) || 0) - (x.amtPaid || 0);
                 return isOngoing && bal > 0;
@@ -2092,7 +2158,7 @@ async function del(k, i, e) {
                             if (elements.length > 0) {
                                 const idx = elements[0].index;
                                 const product = chart.data.labels[idx];
-                                openDrilldownModal('Forecast vs Actual: ' + product, S.o.filter(o => (o.prods||[]).includes(product)));
+                                openDrilldownModal('Forecast vs Actual: ' + product, activeCases.filter(o => (o.prods||[]).includes(product)));
                             }
                         }
                     }
@@ -2103,7 +2169,7 @@ async function del(k, i, e) {
             if(c2) {
                 if(window.myC2) window.myC2.destroy();
                 let prodCounts = {};
-                S.o.forEach(order => { (order.prods || []).forEach(p => prodCounts[p] = (prodCounts[p] || 0) + 1); });
+                activeCases.forEach(order => { (order.prods || []).forEach(p => prodCounts[p] = (prodCounts[p] || 0) + 1); });
                 let topProds = Object.keys(prodCounts).sort((a,b) => prodCounts[b] - prodCounts[a]).slice(0, 5);
                 window.myC2 = new Chart(c2, {
                     type: 'doughnut',
@@ -2116,7 +2182,7 @@ async function del(k, i, e) {
                             if (elements.length > 0 && topProds.length > 0) {
                                 const idx = elements[0].index;
                                 const product = chart.data.labels[idx];
-                                openDrilldownModal('Top Sales: ' + product, S.o.filter(o => (o.prods||[]).includes(product)));
+                                openDrilldownModal('Top Sales: ' + product, activeCases.filter(o => (o.prods||[]).includes(product)));
                             }
                         }
                     }
@@ -2126,7 +2192,7 @@ async function del(k, i, e) {
             const cCasePay = document.getElementById('chartCasePayment')?.getContext('2d');
             if(cCasePay) {
                 if(window.myCCasePay) window.myCCasePay.destroy();
-                let topCasesForPay = S.o.slice(-10); 
+                let topCasesForPay = activeCases.slice(-10); 
                 let caseLabels = topCasesForPay.map(o => o.id);
                 let casePaidData = topCasesForPay.map(o => o.amtPaid || 0);
                 let caseRemData = topCasesForPay.map(o => {
@@ -2149,7 +2215,7 @@ async function del(k, i, e) {
                             if (elements.length > 0 && caseLabels.length > 0) {
                                 const idx = elements[0].index;
                                 const caseId = chart.data.labels[idx];
-                                openDrilldownModal('Payment Status: ' + caseId, S.o.filter(o => o.id === caseId));
+                                openDrilldownModal('Payment Status: ' + caseId, activeCases.filter(o => o.id === caseId));
                             }
                         }
                     }
@@ -2160,7 +2226,7 @@ async function del(k, i, e) {
             if(c3) {
                 if(window.myC3) window.myC3.destroy();
                 let payCounts = { "CASH": 0, "GCASH": 0, "BANK TRANSFER": 0, "PDC": 0 };
-                S.o.forEach(order => { if(order.pay) payCounts[order.pay] = (payCounts[order.pay] || 0) + 1; });
+                activeCases.forEach(order => { if(order.pay) payCounts[order.pay] = (payCounts[order.pay] || 0) + 1; });
                 window.myC3 = new Chart(c3, {
                     type: 'pie',
                     data: {
@@ -2172,7 +2238,7 @@ async function del(k, i, e) {
                             if (elements.length > 0) {
                                 const idx = elements[0].index;
                                 const method = chart.data.labels[idx];
-                                openDrilldownModal('Payment Method: ' + method, S.o.filter(o => o.pay === method));
+                                openDrilldownModal('Payment Method: ' + method, activeCases.filter(o => o.pay === method));
                             }
                         }
                     }
@@ -2182,7 +2248,7 @@ async function del(k, i, e) {
             const c4 = document.getElementById('chartStatus')?.getContext('2d');
             if(c4) {
                 if(window.myC4) window.myC4.destroy();
-                let statusCounts = S.stats.map(s => S.o.filter(o => o.st === s).length);
+                let statusCounts = S.stats.map(s => activeCases.filter(o => o.st === s).length);
                 window.myC4 = new Chart(c4, {
                     type: 'doughnut',
                     data: {
@@ -2194,7 +2260,7 @@ async function del(k, i, e) {
                             if (elements.length > 0) {
                                 const idx = elements[0].index;
                                 const status = chart.data.labels[idx];
-                                openDrilldownModal('Status: ' + status, S.o.filter(o => o.st === status));
+                                openDrilldownModal('Status: ' + status, activeCases.filter(o => o.st === status));
                             }
                         }
                     }
@@ -2346,83 +2412,73 @@ async function del(k, i, e) {
         }
 
        function rAcc() {
-    let inProdCases = S.o.filter(x => x.st === 'In Production' || x.st === 'IN PRODUCTION').length;
-    let discountedCases = S.o.filter(x => x.v && x.v !== 'NONE').length;
-    
-    let accStatsHtml = `
-        <div class="card p-5 border-0 shadow-sm rounded-2xl flex flex-col justify-between bg-white border-l-4 border-l-blue-500">
-            <h4 class="text-[10px] text-gray-500 font-bold uppercase tracking-widest leading-tight mb-2">Total Clients</h4>
-            <h2 class="text-3xl font-black text-gray-800 kpi-val-blue">${S.d.length}</h2>
-        </div>
-        <div class="card p-5 border-0 shadow-sm rounded-2xl flex flex-col justify-between bg-white border-l-4 border-l-orange-500">
-            <h4 class="text-[10px] text-gray-500 font-bold uppercase tracking-widest leading-tight mb-2">Total Cases</h4>
-            <h2 class="text-3xl font-black text-gray-800 kpi-val-orange">${S.o.length}</h2>
-        </div>
-        <div class="card p-5 border-0 shadow-sm rounded-2xl flex flex-col justify-between bg-white border-l-4 border-l-purple-500">
-            <h4 class="text-[10px] text-gray-500 font-bold uppercase tracking-widest leading-tight mb-2">WIP (In Prod)</h4>
-            <h2 class="text-3xl font-black text-gray-800 kpi-val-purple">${inProdCases}</h2>
-        </div>
-        <div class="card p-5 border-0 shadow-sm rounded-2xl flex flex-col justify-between bg-white border-l-4 border-l-emerald-500">
-            <h4 class="text-[10px] text-gray-500 font-bold uppercase tracking-widest leading-tight mb-2">Discounted Volume</h4>
-            <h2 class="text-3xl font-black text-gray-800 kpi-val-emerald">${discountedCases}</h2>
-        </div>
-    `;
-    let accContainer = document.getElementById('acc-stats-grid');
-    if(accContainer) accContainer.innerHTML = accStatsHtml;
-
-    let filter = document.getElementById('acc-filter').value;
-    let sq = document.getElementById('acc-search')?.value.toUpperCase() || ''; // SEARCH LOGIC
-    let tbody = document.getElementById('b-receivables');
-    
-    let rows = S.o.slice(-100).reverse().map((x, i) => {
-       let tot = parseFloat(String(x.tot).replace(/,/g, '')) || 0;
-       let paid = x.amtPaid || 0;
-       
-       // FIX: We must calculate the balance here so the status logic works
-       let bal = tot - paid; 
-       
-        let currentStatus = x.manualPayStatus ? x.manualPayStatus : (bal <= 0 ? 'FULLY PAID' : (paid > 0 ? 'PARTIAL PAYMENT' : 'UNPAID'));
-
-        if(filter === 'UNPAID' && (currentStatus === 'FULLY PAID' || currentStatus === 'PAID')) return '';
-        
-        // SEARCH FILTER CONDITION
-        if(sq && !x.id.includes(sq) && !(x.doc || '').toUpperCase().includes(sq)) return '';
-
-        let statusBadgeClass = 'bg-slate-100 text-slate-800 border-slate-200';
-        if (currentStatus === 'FULLY PAID') statusBadgeClass = 'bg-emerald-100 text-emerald-800 border-emerald-200';
-        if (currentStatus === 'PARTIAL PAYMENT') statusBadgeClass = 'bg-orange-100 text-orange-800 border-orange-200';
-        if (currentStatus === 'UNPAID') statusBadgeClass = 'bg-rose-100 text-rose-800 border-rose-200';
-
-        return `<tr class="cursor-pointer hover:bg-slate-50/50 transition-colors" onclick="viewRelatedPayments(${i})">
-            <td class="font-black text-slate-700">${x.id}</td><td class="font-bold text-xs">${x.doc}</td><td class="text-slate-500 font-bold">₱${tot.toLocaleString()}</td>
-            <td class="text-emerald-600 font-black">₱${paid.toLocaleString()}</td>
-            <td class="text-rose-600 font-black">₱${bal.toLocaleString()}</td>
-            <td><span class="status-badge ${statusBadgeClass}">${currentStatus}</span></td>
-            <td>
-                <div class="flex gap-1">
-                    <button onclick="openEditPayStatus(${i}, event)" class="btn btn-orange !py-2 !px-3 text-[9px] rounded-lg shadow-sm tracking-widest">EDIT</button>
-                    <button onclick="del('o',${i},event)" class="btn btn-red !py-2 !px-3 text-[9px] rounded-lg shadow-sm tracking-widest">DEL</button>
+            let activeCases = S.o.filter(x => x.st !== 'VOID' && x.st !== 'CANCELLED');
+            let inProdCases = activeCases.filter(x => x.st === 'In Production' || x.st === 'IN PRODUCTION').length;
+            let discountedCases = activeCases.filter(x => x.v && x.v !== 'NONE').length;
+            
+            let accStatsHtml = `
+                <div class="card p-5 border-0 shadow-sm rounded-2xl flex flex-col justify-between bg-white border-l-4 border-l-blue-500">
+                    <h4 class="text-[10px] text-gray-500 font-bold uppercase tracking-widest leading-tight mb-2">Total Clients</h4>
+                    <h2 class="text-3xl font-black text-gray-800 kpi-val-blue">${S.d.length}</h2>
                 </div>
-            </td>
-        </tr>`;
-    }).join('');
-    
-    if(tbody) tbody.innerHTML = rows || `<tr><td colspan="7" class="text-center p-8 text-slate-400 font-black tracking-widest uppercase text-[10px]">No ledger data found for this filter/search.</td></tr>`;
+                <div class="card p-5 border-0 shadow-sm rounded-2xl flex flex-col justify-between bg-white border-l-4 border-l-orange-500">
+                    <h4 class="text-[10px] text-gray-500 font-bold uppercase tracking-widest leading-tight mb-2">Total Active Cases</h4>
+                    <h2 class="text-3xl font-black text-gray-800 kpi-val-orange">${activeCases.length}</h2>
+                </div>
+                <div class="card p-5 border-0 shadow-sm rounded-2xl flex flex-col justify-between bg-white border-l-4 border-l-purple-500">
+                    <h4 class="text-[10px] text-gray-500 font-bold uppercase tracking-widest leading-tight mb-2">WIP (In Prod)</h4>
+                    <h2 class="text-3xl font-black text-gray-800 kpi-val-purple">${inProdCases}</h2>
+                </div>
+                <div class="card p-5 border-0 shadow-sm rounded-2xl flex flex-col justify-between bg-white border-l-4 border-l-emerald-500">
+                    <h4 class="text-[10px] text-gray-500 font-bold uppercase tracking-widest leading-tight mb-2">Discounted Volume</h4>
+                    <h2 class="text-3xl font-black text-gray-800 kpi-val-emerald">${discountedCases}</h2>
+                </div>
+            `;
+            let accContainer = document.getElementById('acc-stats-grid');
+            if(accContainer) accContainer.innerHTML = accStatsHtml;
 
-    let bAcct = document.getElementById('b-acct');
-    if(bAcct) {
-        bAcct.innerHTML = S.o.filter(x => x.v && x.v !== 'NONE').map(x => `
-            <tr class="border-b">
-                <td class="font-black">${x.id}</td><td class="font-bold text-xs">${x.doc}</td><td class="font-bold text-xs">${x.pat}</td>
-                <td class="text-purple-600 font-black bg-purple-50 px-2 py-1 rounded">${x.v}</td>
-                <td class="text-[#189ad3] font-black">₱${x.tot}</td>
-                <td><span class="bg-slate-100 px-3 py-1 rounded-lg border text-[10px] font-black tracking-widest uppercase">${x.st}</span></td>
-            </tr>
-        `).join('') || `<tr><td colspan="6" class="text-center p-8 text-slate-400 font-black tracking-widest uppercase text-[10px]">No active discount utilizations detected.</td></tr>`;
-    }
-    
-    viewRelatedPayments(currentPayCaseIdx);
-}
+            let filter = document.getElementById('acc-filter').value;
+            let sq = document.getElementById('acc-search')?.value.toUpperCase() || ''; 
+            let tbody = document.getElementById('b-receivables');
+            
+            // Fix index mapping for buttons
+            let recentOrders = S.o.map((x, i) => ({...x, originalIdx: i})).slice(-100).reverse();
+
+            let rows = recentOrders.map(x => {
+                if (x.st === 'VOID' || x.st === 'CANCELLED') return ''; 
+
+                let tot = parseFloat(String(x.tot).replace(/,/g, '')) || 0;
+                let paid = x.amtPaid || 0;
+                let bal = tot - paid; 
+                
+                let currentStatus = x.manualPayStatus ? x.manualPayStatus : (bal <= 0 ? 'FULLY PAID' : (paid > 0 ? 'PARTIAL PAYMENT' : 'UNPAID'));
+
+                if(filter === 'UNPAID' && (currentStatus === 'FULLY PAID' || currentStatus === 'PAID')) return '';
+                if(sq && !x.id.includes(sq) && !(x.doc || '').toUpperCase().includes(sq)) return '';
+
+                let statusBadgeClass = 'bg-slate-100 text-slate-800 border-slate-200';
+                if (currentStatus === 'FULLY PAID') statusBadgeClass = 'bg-emerald-100 text-emerald-800 border-emerald-200';
+                if (currentStatus === 'PARTIAL PAYMENT') statusBadgeClass = 'bg-orange-100 text-orange-800 border-orange-200';
+                if (currentStatus === 'UNPAID') statusBadgeClass = 'bg-rose-100 text-rose-800 border-rose-200';
+
+                return `<tr class="cursor-pointer hover:bg-slate-50/50 transition-colors" onclick="viewRelatedPayments(${x.originalIdx})">
+                    <td class="font-black text-slate-700">${x.id}</td><td class="font-bold text-xs">${x.doc}</td><td class="text-slate-500 font-bold">₱${tot.toLocaleString()}</td>
+                    <td class="text-emerald-600 font-black">₱${paid.toLocaleString()}</td>
+                    <td class="text-rose-600 font-black">₱${bal.toLocaleString()}</td>
+                    <td><span class="status-badge ${statusBadgeClass}">${currentStatus}</span></td>
+                    <td>
+                        <div class="flex gap-1">
+                            <button onclick="openEditPayStatus(${x.originalIdx}, event)" class="btn btn-orange !py-2 !px-3 text-[9px] rounded-lg shadow-sm tracking-widest">EDIT</button>
+                            <button onclick="voidCase(${x.originalIdx}, event)" class="btn btn-red !py-2 !px-3 text-[9px] rounded-lg shadow-sm tracking-widest">VOID</button>
+                        </div>
+                    </td>
+                </tr>`;
+            }).join('');
+            
+            if(tbody) tbody.innerHTML = rows || `<tr><td colspan="7" class="text-center p-8 text-slate-400 font-black tracking-widest uppercase text-[10px]">No ledger data found for this filter/search.</td></tr>`;
+
+            viewRelatedPayments(currentPayCaseIdx);
+        }
 
         function viewRelatedPayments(idx) {
             currentPayCaseIdx = idx;
@@ -2497,7 +2553,7 @@ async function del(k, i, e) {
             }
         }
 
-        async function delPayment(caseIdx, payIdx) {
+      async function delPayment(caseIdx, payIdx) {
     window.isSavingOrder = true; window.isSyncing = true; window.lastSaveTime = Date.now();
 
     let order = S.o[caseIdx];
@@ -2510,23 +2566,20 @@ async function del(k, i, e) {
     S.trash.push({ k: 'payment', item: removed, caseId: order.id, ts: new Date().toLocaleString() });
     
     try {
+        // UPDATE REAL TABLE
         const { error } = await _supabase.from('dap_job_orders').update({
-            amount_paid: order.amtPaid
+            amount_paid: order.amtPaid,
+            raw_data: order // push the updated JSON into the row
         }).eq('id', order.id);
         
         if (error) alert("SUPABASE BLOCKED PAYMENT DELETE! Error: " + error.message);
-
-        // Backup update to dap_store JSON blob
-        await _supabase.from('dap_store').upsert({ id: 'dap_v4_o', data: S.o });
     } catch(err) {
         console.error(err);
     }
 
     await sv('trash');
-    
     window.lastSaveTime = Date.now();
     rAcc();
-    
     setTimeout(() => { window.isSavingOrder = false; window.isSyncing = false; }, 4000);
 }
 
@@ -4372,18 +4425,48 @@ function execPrint() {
             alert("Timeline Markers Adjusted.");
         }
 
-        function rDisc(){
-            document.getElementById('v-list').innerHTML = S.v.map((v,i)=>{
-                let isExp = v.e && new Date(v.e) < new Date();
-                return `
-                <div class="card !p-5 flex justify-between items-center rounded-2xl border-0 shadow-md ${isExp?'opacity-50 bg-slate-50 grayscale':'bg-white border-l-4 border-l-purple-500'} transition-all">
-                    <div>
-                        <b class="text-xl font-black text-slate-800">${v.c} <span class="text-purple-600 ml-2 bg-purple-50 px-2 py-1 rounded-lg text-sm">-${v.p}%</span></b><br>
-                        <small class="font-black text-slate-400 tracking-widest text-[9px] uppercase block mt-2">VALID UNTIL: ${v.e||'PERMANENT HORIZON'}</small>
-                    </div>
-                    <button onclick="del('v',${i})" class="btn btn-red px-5 py-3 shadow-md rounded-xl text-xs tracking-widest">BURN</button>
-                </div>`;
-            }).join('') || '<div class="text-center text-[10px] uppercase tracking-widest text-slate-400 font-black p-8 border-2 border-dashed border-slate-200 rounded-2xl mt-4">NO ACTIVE CAMPAIGNS.</div>';
+        function rDisc() {
+            let vList = document.getElementById('v-list');
+            if (vList) {
+                vList.innerHTML = S.v.map((v, i) => {
+                    let isExp = v.e && new Date(v.e) < new Date();
+                    return `
+                    <div class="card !p-5 flex justify-between items-center rounded-2xl border-0 shadow-md ${isExp ? 'opacity-50 bg-slate-50 grayscale' : 'bg-white border-l-4 border-l-purple-500'} transition-all mb-3">
+                        <div>
+                            <b class="text-xl font-black text-slate-800">${v.c} <span class="text-purple-600 ml-2 bg-purple-50 px-2 py-1 rounded-lg text-sm">-${v.p}%</span></b><br>
+                            <small class="font-black text-slate-400 tracking-widest text-[9px] uppercase block mt-2">VALID UNTIL: ${v.e || 'PERMANENT HORIZON'}</small>
+                        </div>
+                        <button onclick="del('v',${i})" class="btn btn-red px-5 py-3 shadow-md rounded-xl text-xs tracking-widest">BURN</button>
+                    </div>`;
+                }).join('') || '<div class="text-center text-[10px] uppercase tracking-widest text-slate-400 font-black p-8 border-2 border-dashed border-slate-200 rounded-2xl mt-4">NO ACTIVE CAMPAIGNS.</div>';
+            }
+
+            let bAcct = document.getElementById('b-acct');
+            if (bAcct) {
+                // FILTER OUT VOID AND CANCELLED FROM DISCOUNT LIST
+                bAcct.innerHTML = S.o.filter(x => x.st !== 'VOID' && x.st !== 'CANCELLED' && x.v && x.v !== 'NONE').map(x => {
+                    let rawTot = 0;
+                    (x.prods || []).forEach(p => {
+                        let pQty = (x.pQtys && x.pQtys[p]) ? x.pQtys[p] : (x.qty || 1);
+                        rawTot += (S.pr[p] || 1500) * pQty;
+                    });
+                    
+                    let vch = S.v.find(v => v.c === x.v);
+                    let discPct = vch ? vch.p : 0;
+                    
+                    return `
+                    <tr class="border-b hover:bg-purple-50/30 transition-colors">
+                        <td class="font-black p-3">${x.id}</td>
+                        <td class="font-bold text-xs p-3">${x.doc}</td>
+                        <td class="font-bold text-xs p-3">${x.pat}</td>
+                        <td class="text-slate-500 font-bold p-3">₱${rawTot.toLocaleString()}</td>
+                        <td class="p-3"><span class="text-purple-600 font-black bg-purple-50 px-2 py-1 rounded text-[10px] tracking-widest">${x.v} (-${discPct}%)</span></td>
+                        <td class="text-[#189ad3] font-black text-sm p-3">₱${x.tot}</td>
+                        <td class="p-3"><span class="bg-slate-100 px-3 py-1 rounded-lg border text-[10px] font-black tracking-widest uppercase">${x.st}</span></td>
+                    </tr>
+                    `;
+                }).join('') || `<tr><td colspan="7" class="text-center p-8 text-slate-400 font-black tracking-widest uppercase text-[10px]">No active discount utilizations detected.</td></tr>`;
+            }
         }
 
         function addDisc(){
@@ -4431,7 +4514,8 @@ function execPrint() {
                 let isSelf = (x.n === S.curr.n);
                 let actionBtns = '';
                 
-                let passBadge = isSA ? `<span class="text-[9px] font-mono tracking-widest bg-rose-50 text-rose-600 px-3 py-1 rounded-lg ml-2 border border-rose-100 shadow-inner">KEY: ${x.p}</span>` : '';
+                // SECURE FIX: Passwords are no longer exposed to the frontend, so we don't display them here.
+                let passBadge = '';
 
                 if (canManageUsers && !isSelf) {
                     let modBtn = `<button onclick="editUserMods('${x.n}')" class="btn btn-blue !py-2 px-4 shadow-sm rounded-lg text-[9px] tracking-widest">MODS</button>`;
@@ -4674,33 +4758,48 @@ function execPrint() {
                 rChat();
             }
         }
-        function saAddUser() {
-            let n = document.getElementById('sa-u-name').value.toUpperCase();
-            let r = document.getElementById('sa-u-role').value;
-            let customR = document.getElementById('sa-u-role-custom').value.toUpperCase();
-            let p = document.getElementById('sa-u-pass').value;
-            
-            if(!n || !p) return alert("System requires a name and password for deployment.");
-            if(S.u.find(x=>x.n===n)) return alert("Operative Callsign already registered.");
-            
-            let finalRole = (r === 'CUSTOM' && customR) ? customR : r;
-            if(finalRole === 'CUSTOM') return alert("Custom role definition missing.");
+        async function saAddUser() {
+    let n = document.getElementById('sa-u-name').value.toUpperCase();
+    let r = document.getElementById('sa-u-role').value;
+    let customR = document.getElementById('sa-u-role-custom').value.toUpperCase();
+    let p = document.getElementById('sa-u-pass').value;
+    
+    if(!n || !p) return alert("System requires a name and password for deployment.");
+    if(S.u.find(x => x.n === n)) return alert("Operative Callsign already registered.");
+    
+    let finalRole = (r === 'CUSTOM' && customR) ? customR : r;
+    if(finalRole === 'CUSTOM') return alert("Custom role definition missing.");
 
-            let defMods = ['dashboard'];
-            if (finalRole === 'ADMIN') defMods = ADMIN_DEFAULT_MODS;
-            else if (finalRole === 'STAFF') defMods = ['dashboard'];
-            else if (finalRole === 'HR') defMods = ['dashboard'];
-            else if (finalRole === 'PRODUCTION') defMods = ['dashboard'];
-            else if (finalRole === 'ACCOUNTING') defMods = ['dashboard'];
+    let defMods = ['dashboard'];
+    if (finalRole === 'ADMIN') defMods = ADMIN_DEFAULT_MODS;
+    else if (finalRole === 'STAFF') defMods = ['dashboard'];
+    else if (finalRole === 'HR') defMods = ['dashboard'];
+    else if (finalRole === 'PRODUCTION') defMods = ['dashboard'];
+    else if (finalRole === 'ACCOUNTING') defMods = ['dashboard'];
 
-            S.u.push({n, d: finalRole, p, s:'active', m: defMods});
-            sv();
-            document.getElementById('sa-u-name').value = '';
-            document.getElementById('sa-u-pass').value = '';
-            document.getElementById('sa-u-role-custom').value = '';
-            alert("Operative provisioned and granted clearance. Dashboard only default applied.");
-            if(document.getElementById('p-users').classList.contains('active')) rUsers();
-        }
+    // SECURE FIX: Send the new user straight to the database
+    const { error } = await _supabase.from('dap_users').insert([{
+        username: n,
+        password: p,
+        role: finalRole,
+        status: 'active',
+        modules: defMods
+    }]);
+
+    if (error) {
+        return alert("Error saving user to database: " + error.message);
+    }
+
+    // Add to local UI (without the password)
+    S.u.push({n, d: finalRole, s:'active', m: defMods});
+    
+    document.getElementById('sa-u-name').value = '';
+    document.getElementById('sa-u-pass').value = '';
+    document.getElementById('sa-u-role-custom').value = '';
+    alert("Operative provisioned and granted clearance. Dashboard only default applied.");
+    
+    if(document.getElementById('p-users').classList.contains('active')) rUsers();
+}
 
         function toggleCustomRole(val) {
             let cr = document.getElementById('sa-u-role-custom');
@@ -5085,86 +5184,73 @@ function execPrint() {
         }
 
         // --- MASTER GLOBAL LIVE SYNC (Total System Pulse - 3 Sec Rule) ---
-        async function syncGlobalLive() {
-            window.lastSaveTime = window.lastSaveTime || 0;
-            
-            // SHIELD CHECK 1: Before downloading
-            if (!S.curr || window.isSavingOrder || window.isEditingProd || window.isSyncing || (Date.now() - window.lastSaveTime < 5000)) return; 
+      async function syncGlobalLive() {
+    window.lastSaveTime = window.lastSaveTime || 0;
+    if (!S.curr || window.isSavingOrder || window.isEditingProd || window.isSyncing || (Date.now() - window.lastSaveTime < 5000)) return; 
 
-            try {
-                const { data: ordRes } = await _supabase.from('dap_store').select('data').eq('id', 'dap_v4_o').single();
-                const { data: msgRes } = await _supabase.from('dap_store').select('data').eq('id', 'dap_v4_msg').single();
-                const { data: docRes } = await _supabase.from('dap_store').select('data').eq('id', 'dap_v4_d').single();
-                const { data: vRes } = await _supabase.from('dap_store').select('data').eq('id', 'dap_v4_v').single();
-                const { data: prRes } = await _supabase.from('dap_store').select('data').eq('id', 'dap_v4_pr').single();
+    try {
+        // PULL FROM REAL TABLES
+        const [ordersRes, clientsRes, msgRes, vRes, prRes] = await Promise.all([
+            _supabase.from('dap_job_orders').select('raw_data'),
+            _supabase.from('dap_clients').select('raw_data'),
+            _supabase.from('dap_store').select('data').eq('id', 'dap_v4_msg').single(),
+            _supabase.from('dap_store').select('data').eq('id', 'dap_v4_v').single(),
+            _supabase.from('dap_store').select('data').eq('id', 'dap_v4_pr').single()
+        ]);
 
-                const { data: trashRes } = await _supabase.from('dap_store').select('data').eq('id', 'dap_v4_trash').single();
-               if (trashRes && trashRes.data && JSON.stringify(trashRes.data) !== JSON.stringify(S.trash)) {
-               S.trash = trashRes.data;
-               if(document.querySelector('.page.active')?.id === 'p-architect') rTrash();
-                }
+        if (window.isSavingOrder || window.isEditingProd || window.isSyncing || (Date.now() - window.lastSaveTime < 5000)) return; 
 
-                // SHIELD CHECK 2 (CRITICAL FIX): After downloading!
-                // If you clicked "Save" while Supabase was fetching this data, ABORT and throw the old data away.
-                if (window.isSavingOrder || window.isEditingProd || window.isSyncing || (Date.now() - window.lastSaveTime < 5000)) {
-                    return; 
-                }
+        let needsRefresh = false;
 
-                let needsRefresh = false;
-
-                if (msgRes && msgRes.data && msgRes.data.length !== S.msg.length) {
-                    let isNew = msgRes.data.length > S.msg.length;
-                    S.msg = msgRes.data;
-                    let chatBox = document.getElementById('chat-box');
-                    let bubble = document.getElementById('chat-bubble');
-                    if (chatBox.style.display === 'flex') { rChat(); } 
-                    else if (bubble && isNew) {
-                        bubble.innerHTML = '<span class="absolute top-0 right-0 w-3 h-3 bg-red-500 rounded-full animate-ping"></span><span class="absolute top-0 right-0 w-3 h-3 bg-red-500 rounded-full"></span><svg class="w-6 h-6 drop-shadow-md text-white relative z-10" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path></svg>';
-                    }
-                }
-
-                if (ordRes && ordRes.data && JSON.stringify(ordRes.data) !== JSON.stringify(S.o)) { S.o = ordRes.data; needsRefresh = true; }
-                if (docRes && docRes.data && JSON.stringify(docRes.data) !== JSON.stringify(S.d)) { S.d = docRes.data; needsRefresh = true; }
-                if (vRes && vRes.data && JSON.stringify(vRes.data) !== JSON.stringify(S.v)) { 
-                    S.v = vRes.data; 
-                    if(document.getElementById('p-accounting').classList.contains('active')) rDisc(); 
-                }
-                if (prRes && prRes.data && JSON.stringify(prRes.data) !== JSON.stringify(S.pr)) { 
-                    S.pr = prRes.data; 
-                    if(document.getElementById('p-accounting').classList.contains('active') && !document.getElementById('p-catalog').classList.contains('hidden')) renderCatalog(); 
-                }
-
-                if (needsRefresh) {
-                    if(typeof rOrd === 'function') rOrd(); 
-                    if(typeof dash === 'function') dash(); 
-                    if(typeof rAcc === 'function') rAcc(); 
-                    if(typeof rDocs === 'function') rDocs();
-                    if(typeof rProd === 'function') rProd();
-                    if(typeof rSales === 'function' && document.getElementById('p-sales').classList.contains('active')) rSales();
-                    if(typeof rMaintenance === 'function' && document.getElementById('p-maintenance').classList.contains('active')) rMaintenance();
-                    if(typeof initFullCal === 'function' && document.getElementById('p-calendar').classList.contains('active')) initFullCal();
-                }
-
-            } catch(e) { }
+        if (ordersRes.data) {
+            let newOrders = ordersRes.data.map(row => row.raw_data);
+            if (JSON.stringify(newOrders) !== JSON.stringify(S.o)) { S.o = newOrders; needsRefresh = true; }
         }
-        // --- SUPABASE REALTIME PROTOCOL (Zero-Lag Sync) ---
-    function initRealtimeSync() {
-    _supabase
-        .channel('dap_realtime')
-        .on('postgres_changes', { 
-            event: '*', 
-            schema: 'public', 
-            table: 'dap_store' 
-        }, payload => {
-            console.log('Cloud update detected!', payload);
-            // This only triggers a download when REAL data is added/changed by another user
-            syncGlobalLive(); 
-        })
-        .subscribe((status) => {
-            if (status === 'SUBSCRIBED') {
-                console.log('Realtime Link Active');
+
+        if (clientsRes.data) {
+            let newClients = clientsRes.data.map(row => row.raw_data);
+            if (JSON.stringify(newClients) !== JSON.stringify(S.d)) { S.d = newClients; needsRefresh = true; }
+        }
+
+        if (msgRes && msgRes.data && msgRes.data.length !== S.msg.length) {
+            let isNew = msgRes.data.length > S.msg.length;
+            S.msg = msgRes.data;
+            let chatBox = document.getElementById('chat-box');
+            let bubble = document.getElementById('chat-bubble');
+            if (chatBox.style.display === 'flex') { rChat(); } 
+            else if (bubble && isNew) {
+                bubble.innerHTML = '<span class="absolute top-0 right-0 w-3 h-3 bg-red-500 rounded-full animate-ping"></span><span class="absolute top-0 right-0 w-3 h-3 bg-red-500 rounded-full"></span><svg class="w-6 h-6 drop-shadow-md text-white relative z-10" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path></svg>';
             }
-        });
+        }
+
+        if (vRes && vRes.data && JSON.stringify(vRes.data) !== JSON.stringify(S.v)) { 
+            S.v = vRes.data; 
+            if(document.getElementById('p-accounting').classList.contains('active')) rDisc(); 
+        }
+        if (prRes && prRes.data && JSON.stringify(prRes.data) !== JSON.stringify(S.pr)) { 
+            S.pr = prRes.data; 
+            if(document.getElementById('p-accounting').classList.contains('active') && !document.getElementById('p-catalog').classList.contains('hidden')) renderCatalog(); 
+        }
+
+        if (needsRefresh) {
+            if(typeof rOrd === 'function') rOrd(); 
+            if(typeof dash === 'function') dash(); 
+            if(typeof rAcc === 'function') rAcc(); 
+            if(typeof rDocs === 'function') rDocs();
+            if(typeof rProd === 'function') rProd();
+            if(typeof rSales === 'function' && document.getElementById('p-sales').classList.contains('active')) rSales();
+            if(typeof rMaintenance === 'function' && document.getElementById('p-maintenance').classList.contains('active')) rMaintenance();
+            if(typeof initFullCal === 'function' && document.getElementById('p-calendar').classList.contains('active')) initFullCal();
+        }
+    } catch(e) { console.error("Sync error:", e); }
+}
+        // --- SUPABASE REALTIME PROTOCOL (Zero-Lag Sync) ---
+   function initRealtimeSync() {
+    _supabase.channel('dap_realtime')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'dap_store' }, payload => { syncGlobalLive(); })
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'dap_job_orders' }, payload => { syncGlobalLive(); })
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'dap_clients' }, payload => { syncGlobalLive(); })
+        .subscribe();
 }
 
 // Call this inside your initApp() after loading the initial data
