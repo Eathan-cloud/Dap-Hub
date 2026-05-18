@@ -1659,19 +1659,29 @@ async function login() {
     btn.disabled = false;
 }
         
-        function register(){
-            let n=document.getElementById('r-name').value.toUpperCase();
-            let r=document.getElementById('r-role').value;
-            let p=document.getElementById('r-pass').value;
-            if(!n||!p) return alert('Data Required');
-            if(S.u.find(x=>x.n===n)) return alert('Username already exists!');
-            
-            let defMods = ['dashboard'];
-            if (r === 'ADMIN') defMods = ADMIN_DEFAULT_MODS;
+        async function register(){
+    let n=document.getElementById('r-name').value.toUpperCase();
+    let r=document.getElementById('r-role').value;
+    let p=document.getElementById('r-pass').value;
+    if(!n||!p) return alert('Data Required');
+    if(S.u.find(x=>x.n===n)) return alert('Username already exists!');
+    
+    let defMods = ['dashboard'];
+    if (r === 'ADMIN') defMods = ADMIN_DEFAULT_MODS;
 
-            S.u.push({n, d:r, p, s:'pending', m:defMods});
-            sv(); alert('Request Sent to Gatekeeper!'); toggleReg(false);
-        }
+    S.u.push({n, d:r, p, s:'pending', m:defMods});
+    
+    // FIX: SEND NEW USERS DIRECTLY TO THE SECURE DATABASE
+    await _supabase.from('dap_users').upsert({
+        username: n,
+        password: p,
+        role: r,
+        status: 'pending',
+        modules: defMods
+    });
+
+    sv(); alert('Request Sent to Gatekeeper!'); toggleReg(false);
+}
         
         function logout(){ 
             sessionStorage.removeItem('dap_session');
@@ -1739,53 +1749,57 @@ async function login() {
             if(t === 'cases') rOrd();
         }
 
-        function go(id){
-            document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
-            document.querySelectorAll('.nav-item').forEach(n=>{
-                n.classList.remove('active');
-                let s = n.querySelector('span');
-                if(s) { s.classList.replace('bg-white', 'bg-slate-600'); s.classList.add('opacity-50'); }
-            });
-            
-            let target = document.getElementById('p-'+id);
-            if(target) target.classList.add('active');
-            
-            let activeNav = document.getElementById('nav-'+id);
-            if(activeNav) {
-                activeNav.classList.add('active');
-                let dot = activeNav.querySelector('span');
-                if(dot) { dot.classList.replace('bg-slate-600', 'bg-white'); dot.classList.remove('opacity-50'); }
-            }
-            
-            if(window.innerWidth < 1024) {
-                const sb = document.getElementById('sidebar');
-                if(!sb.classList.contains('-translate-x-full')) toggleSidebar();
-            }
+       function go(id){
+    document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+    document.querySelectorAll('.nav-item').forEach(n=>{
+        n.classList.remove('active');
+        let s = n.querySelector('span');
+        if(s) { s.classList.replace('bg-white', 'bg-slate-600'); s.classList.add('opacity-50'); }
+    });
+    
+    let target = document.getElementById('p-'+id);
+    if(target) target.classList.add('active');
+    
+    let activeNav = document.getElementById('nav-'+id);
+    if(activeNav) {
+        activeNav.classList.add('active');
+        let dot = activeNav.querySelector('span');
+        if(dot) { dot.classList.replace('bg-slate-600', 'bg-white'); dot.classList.remove('opacity-50'); }
+    }
+    
+    if(window.innerWidth < 1024) {
+        const sb = document.getElementById('sidebar');
+        if(!sb.classList.contains('-translate-x-full')) toggleSidebar();
+    }
 
-            if(id==='dashboard') dash();
-            if(id==='sales') rSales();
-            if(id==='maintenance') rMaintenance();
-            if(id==='clinic_support') { selectedClinicSupportIdx = -1; switchCSTab('cases'); rOrd(); rDocs(); }
-            if(id==='production') { window.isEditingProd = false; selectedProdIdx = -1; rProd(); }
-            if(id==='accounting') { rAcc(); renderCatalog(); rDisc(); }
-            if(id==='users') rUsers();
-            if(id==='calendar') { setTimeout(() => initFullCal(), 100); }
-            if(id==='settings') {
-                popSel('ui-font', S.fonts);
-                document.getElementById('btn-factory-reset').classList.toggle('hidden', S.curr.d !== 'SYSTEM ARCHITECT');
-                document.getElementById('btn-force-stop').classList.toggle('hidden', S.curr.d !== 'SYSTEM ARCHITECT');
-                let srContainer = document.getElementById('show-role-container');
-                if(S.curr.d === 'SYSTEM ARCHITECT') {
-                    srContainer.classList.remove('hidden');
-                    document.getElementById('set-show-role').checked = !!S.curr.sr;
-                } else {
-                    srContainer.classList.add('hidden');
-                }
-            }
-            if(id==='architect') rTrash();
-            
-            document.getElementById('main-content').scrollTo(0,0);
+    if(id==='dashboard') dash();
+    if(id==='sales') rSales();
+    if(id==='maintenance') rMaintenance();
+    if(id==='clinic_support') { selectedClinicSupportIdx = -1; switchCSTab('cases'); rOrd(); rDocs(); }
+    if(id==='production') { window.isEditingProd = false; selectedProdIdx = -1; rProd(); }
+    if(id==='accounting') { rAcc(); renderCatalog(); rDisc(); }
+    if(id==='users') rUsers();
+    if(id==='calendar') { setTimeout(() => initFullCal(), 100); }
+    
+    // --- THIS IS THE FIX FOR THE BLANK DISCOUNT PAGE ---
+    if(id==='discounts') rDisc(); 
+
+    if(id==='settings') {
+        popSel('ui-font', S.fonts);
+        document.getElementById('btn-factory-reset').classList.toggle('hidden', S.curr.d !== 'SYSTEM ARCHITECT');
+        document.getElementById('btn-force-stop').classList.toggle('hidden', S.curr.d !== 'SYSTEM ARCHITECT');
+        let srContainer = document.getElementById('show-role-container');
+        if(S.curr.d === 'SYSTEM ARCHITECT') {
+            srContainer.classList.remove('hidden');
+            document.getElementById('set-show-role').checked = !!S.curr.sr;
+        } else {
+            srContainer.classList.add('hidden');
         }
+    }
+    if(id==='architect') rTrash();
+    
+    document.getElementById('main-content').scrollTo(0,0);
+}
 
         function softRefresh() {
             updateProdFilterDropdown();
@@ -2934,9 +2948,6 @@ async function del(k, i, e) {
                                 <div class="flex border-b border-slate-200">
                                     <div class="w-1/3 bg-[#001f2d] text-white text-xs font-bold p-3 uppercase">PRODUCTS</div>
                                     <div class="w-2/3 p-3 flex flex-col justify-center">${prodsListHtml}</div>
-                                </div>                                <div class="flex border-b border-slate-200">
-                                    <div class="w-1/3 bg-[#001f2d] text-white text-xs font-bold p-3 uppercase">COST</div>
-                                    <div class="w-2/3 p-3 text-sm font-bold">₱${baseCost.toLocaleString()}</div>
                                 </div>
                                 <div class="flex border-b border-slate-200">
                                     <div class="w-1/3 bg-[#001f2d] text-white text-xs font-bold p-3 uppercase">TOTAL COST</div>
@@ -2947,7 +2958,6 @@ async function del(k, i, e) {
                                     <div class="w-2/3 p-3 text-sm font-bold"><span class="bg-slate-100 border border-slate-200 px-2 py-1 rounded text-[10px] uppercase">${pStat}</span></div>
                                 </div>
                             </div>
-
                             <div class="flex flex-col gap-0 border border-slate-200 rounded">
                                 <div class="p-2 border-b border-slate-200 bg-slate-50 text-[10px] font-bold uppercase">DELIVERY DETAILS</div>
                                 <div class="flex border-b border-slate-200">
@@ -3576,7 +3586,7 @@ function saveOrd() {
     }
 }
 
-// Modify EditOrd to handle new category logics
+// Modify EditOrd to handle new category logics and restore Gender
 function editOrd(i) {
     let x = S.o[i]; 
     modal('ord');
@@ -3587,6 +3597,10 @@ function editOrd(i) {
     document.getElementById('o-pic').value = x.pic || '';
     document.getElementById('o-pat').value = x.pat;
     document.getElementById('o-age').value = x.age || '';
+    
+    // --- THIS IS THE FIX: RESTORE GENDER SELECTION ---
+    setSex(x.sex || ''); 
+    
     document.getElementById('o-doc').value = x.doc;
     document.getElementById('o-date').value = x.date || '';
     document.getElementById('o-comp').value = x.comp || '';
@@ -3680,7 +3694,6 @@ function editOrd(i) {
     }
     if (typeof renderShadeList === 'function') renderShadeList();
     if (typeof refreshShadeTargets === 'function') refreshShadeTargets();
-    // ---> END <---
 
     calcPrice();
 }
@@ -4553,9 +4566,19 @@ function execPrint() {
         }
 
         function addDisc(){
-            let c=document.getElementById('v-code').value.toUpperCase(), p=document.getElementById('v-pct').value, e=document.getElementById('v-exp').value;
-            if(c&&p){ S.v.push({c,p,e}); sv(); rDisc(); document.getElementById('v-code').value=''; document.getElementById('v-pct').value='';}
-        }
+    let c = document.getElementById('v-code').value.toUpperCase();
+    let p = document.getElementById('v-pct').value;
+    let e = document.getElementById('v-exp').value;
+    
+    if(c && p){ 
+        S.v.push({c, p, e}); 
+        sv(); 
+        rDisc(); 
+        document.getElementById('v-code').value = ''; 
+        document.getElementById('v-pct').value = '';
+        document.getElementById('v-exp').value = ''; // Clears the date correctly
+    }
+}
 
         function rUsers(){
             let isSA = S.curr.d === 'SYSTEM ARCHITECT';
@@ -4646,61 +4669,90 @@ function execPrint() {
             document.getElementById('mod-user-mods').classList.add('active');
         }
         
-        function saveUserMods(){
-            let idx=document.getElementById('mod-target-idx').value;
-            let checks=document.querySelectorAll('.mod-chk:checked');
-            S.u[idx].m=Array.from(checks).map(c=>c.value);
-            
-            if(S.curr && S.curr.n === S.u[idx].n) {
-                S.curr.m = [...S.u[idx].m];
-                initNav();
-            }
+       async function saveUserMods(){
+    let idx=document.getElementById('mod-target-idx').value;
+    let checks=document.querySelectorAll('.mod-chk:checked');
+    S.u[idx].m=Array.from(checks).map(c=>c.value);
+    
+    if(S.curr && S.curr.n === S.u[idx].n) {
+        S.curr.m = [...S.u[idx].m];
+        initNav();
+    }
 
-            sv(); closeModals(); rUsers();
-            if(document.getElementById('p-maintenance').classList.contains('active')) rMaintenance();
-            alert("Operative Clearances Reconfigured.");
-        }
+    // FIX: FORCE MODULE CLEARANCES INTO THE SECURE DATABASE
+    await _supabase.from('dap_users').update({ modules: S.u[idx].m }).eq('username', S.u[idx].n);
+
+    sv(); closeModals(); rUsers();
+    if(document.getElementById('p-maintenance').classList.contains('active')) rMaintenance();
+    alert("Operative Clearances Reconfigured.");
+}
         
-        function uAct(n,s){ S.u.find(x=>x.n===n).s=s; sv(); rUsers(); }
+        async function uAct(n,s) { 
+    let target = S.u.find(x=>x.n===n);
+    if(target) {
+        target.s = s; 
+        // FIX: FORCE APPROVAL STATUS INTO THE SECURE DATABASE
+        await _supabase.from('dap_users').update({ status: s }).eq('username', n);
+        sv(); 
+        rUsers(); 
+    }
+}
 
-        function updateProfile(){
-            let oldN = S.curr.n;
-            let newN = document.getElementById('set-n').value.toUpperCase();
-            let newP = document.getElementById('set-p').value;
-            
-            if(newN && newN !== oldN) {
-                if(S.u.find(x=>x.n === newN)) return alert("Username already taken.");
-                
-                S.u.forEach(x => {
-                    if(x.n === oldN) x.n = newN;
-                });
-                
-                let idx = S.u.findIndex(x=>x.n===newN);
-                let item = S.u.splice(idx, 1)[0];
-                S.trash.push({ k: 'u', item: {n: oldN}, ts: new Date().toLocaleString() }); 
-                S.u.push(item);
-                S.curr.n = newN;
-            }
+        async function updateProfile(){
+    let oldN = S.curr.n;
+    let newN = document.getElementById('set-n').value.toUpperCase();
+    let newP = document.getElementById('set-p').value;
+    
+    let targetN = newN && newN !== oldN ? newN : oldN;
+    let targetP = newP ? newP : S.curr.p;
 
-            if(newP) {
-                S.u.forEach(x => {
-                    if(x.n === S.curr.n) x.p = newP;
-                });
-                S.curr.p = newP;
-            }
-            
-            if(S.curr.d === 'SYSTEM ARCHITECT') {
-                S.curr.sr = document.getElementById('set-show-role').checked;
-            }
+    if(newN && newN !== oldN) {
+        if(S.u.find(x=>x.n === newN)) return alert("Username already taken.");
+        
+        S.u.forEach(x => {
+            if(x.n === oldN) x.n = newN;
+        });
+        
+        let idx = S.u.findIndex(x=>x.n===newN);
+        let item = S.u.splice(idx, 1)[0];
+        if (!S.trash) S.trash = [];
+        S.trash.push({ k: 'u', item: {n: oldN}, ts: new Date().toLocaleString() }); 
+        S.u.push(item);
+        S.curr.n = newN;
+    }
 
-            sv();
-            
-            // Update Local Session on Name/Pass Change
-            sessionStorage.setItem('dap_session', JSON.stringify({n: S.curr.n, p: S.curr.p}));
+    if(newP) {
+        S.u.forEach(x => {
+            if(x.n === S.curr.n) x.p = newP;
+        });
+        S.curr.p = newP;
+    }
+    
+    if(S.curr.d === 'SYSTEM ARCHITECT') {
+        S.curr.sr = document.getElementById('set-show-role').checked;
+    }
 
-            alert('Personal identity matrix updated. Your new credentials are now active.');
-            initChat();
+    // FIX: UPDATE THE SECURE DATABASE DIRECTLY TO KILL THE OLD PASSWORD
+    if (newN || newP) {
+        try {
+            await _supabase.from('dap_users').update({
+                username: targetN,
+                password: targetP
+            }).eq('username', oldN);
+        } catch (error) {
+            console.error(error);
         }
+    }
+
+    sv(); // Save the local backup too
+    
+    // Update Local Session on Name/Pass Change
+    sessionStorage.setItem('dap_session', JSON.stringify({n: S.curr.n, p: S.curr.p}));
+
+    document.getElementById('set-p').value = '';
+    alert('Personal identity matrix updated. Your new credentials are now active.');
+    initChat();
+}
 
         function changeUI(t, v){ if(t==='font') document.documentElement.style.setProperty('--font-main', v); if(t==='text') document.documentElement.style.setProperty('--text', v); if(t==='bg') document.documentElement.style.setProperty('--bg', v); }
         
