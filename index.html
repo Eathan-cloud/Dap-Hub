@@ -1916,8 +1916,23 @@ async function emptyTrash() {
 }
 
 // --- RECYCLE BIN / TRASH CORE FUNCTIONS ---
+// --- RECYCLE BIN / TRASH CORE FUNCTIONS ---
 async function del(k, i, e) {
     if(e) e.stopPropagation();
+    
+    // 1. SECURITY CHECK: Ask for the reason
+    let reason = prompt("SECURITY PROTOCOL: Please enter the exact reason for deleting this record:");
+    if (reason === null || reason.trim() === "") {
+        alert("Deletion Aborted: A valid reason is required.");
+        return;
+    }
+
+    // 2. SECURITY CHECK: Final Confirmation
+    let confirmDelete = confirm(`WARNING: Are you absolutely sure you want to delete this record?\n\nReason logged: "${reason.toUpperCase()}"\n\nThis will remove the data from the active modules.`);
+    if (!confirmDelete) {
+        alert("Deletion Cancelled by User.");
+        return;
+    }
     
     window.isSavingOrder = true;
     window.isSyncing = true;
@@ -1934,10 +1949,11 @@ async function del(k, i, e) {
 
     if (item) {
         if (!S.trash) S.trash = [];
-        S.trash.push({ k: k, item: item, ts: new Date().toLocaleString() });
+        // Save the reason along with the deleted item in the trash
+        S.trash.push({ k: k, item: item, reason: reason.toUpperCase(), ts: new Date().toLocaleString() });
         
         try {
-            // FIXED: DELETE DIRECTLY FROM REAL TABLES AND WIPE THE GHOST DATA IN THE BLOB
+            // DELETE DIRECTLY FROM REAL TABLES AND WIPE THE GHOST DATA IN THE BLOB
             if (k === 'o' && item.id) {
                 await _supabase.from('dap_job_orders').delete().eq('id', item.id);
                 await _supabase.from('dap_store').upsert({ id: 'dap_v4_o', data: S.o });
@@ -2630,14 +2646,19 @@ async function del(k, i, e) {
 
     window.isEditingProd = false;
 
-    await sv();
+    await sv('o');
     
-    rProd(); dash(); if(typeof rAcc === 'function') rAcc();
+    rProd(); 
+    if(typeof dash === 'function') dash(); 
+    if(typeof rAcc === 'function') rAcc();
     
-    if (document.getElementById('p-calendar').classList.contains('active')) {
+    if (document.getElementById('p-calendar').classList.contains('active') && typeof initFullCal === 'function') {
         initFullCal();
     }
+    
     alert("Workflow Ticket Updated and Synced.");
+    
+    setTimeout(() => { window.isSavingOrder = false; window.isSyncing = false; }, 1000);
 }
         function viewPayment(caseIdx, payIdx) {
             let p = S.o[caseIdx].payments[payIdx];
@@ -3088,6 +3109,12 @@ async function uploadProdImg(inp) {
             imgEl.src = publicUrl;
             imgEl.classList.add('cursor-pointer', 'hover:opacity-80');
             imgEl.onclick = () => window.open(publicUrl, '_blank');
+            
+            // FIX: Immediately save the image URL to the database upon successful upload
+            if (selectedProdIdx !== -1 && S.o[selectedProdIdx]) {
+                S.o[selectedProdIdx].prodImg = publicUrl;
+                sv('o');
+            }
         } else {
             imgEl.classList.add('hidden');
         }
