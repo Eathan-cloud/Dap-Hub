@@ -3608,7 +3608,7 @@ function saveOrd() {
     }
 }
 
-// Modify EditOrd to handle new category logics and restore Gender
+// Modify EditOrd to handle new category logics, restore Gender, and LOCK ID
 function editOrd(i) {
     let x = S.o[i]; 
     modal('ord');
@@ -3616,11 +3616,22 @@ function editOrd(i) {
     
     document.getElementById('o-idx').value = i;
     document.getElementById('o-id').value = x.id;
+    
+    // --- FIX: STRICTLY LOCK AC NUMBER & CASE TYPE KAPAG NAG-EEDIT ---
+    let cTypeDrop = document.getElementById('o-ctype');
+    if(cTypeDrop) {
+        cTypeDrop.disabled = true; // Lock dropdown
+        cTypeDrop.classList.add('opacity-50', 'cursor-not-allowed'); // Make it look disabled
+    }
+    document.getElementById('o-id').setAttribute('readonly', true);
+    document.getElementById('o-id').classList.add('bg-slate-100', 'text-slate-400');
+    document.getElementById('o-id').classList.remove('bg-white', 'text-blue-700', 'shadow-inner');
+    // ----------------------------------------------------------------
+
     document.getElementById('o-pic').value = x.pic || '';
     document.getElementById('o-pat').value = x.pat;
     document.getElementById('o-age').value = x.age || '';
     
-    // --- THIS IS THE FIX: RESTORE GENDER SELECTION ---
     setSex(x.sex || ''); 
     
     document.getElementById('o-doc').value = x.doc;
@@ -3703,11 +3714,9 @@ function editOrd(i) {
         }
     });
 
-
     if (x.shadeArr) {
         currentOrderShades = [...x.shadeArr];
     } else if (x.shade || x.shadeManual) {
-        // Backward compatibility for old orders before this update
         let oldVal = x.shade || '';
         if (x.shadeManual) oldVal += (oldVal ? " / " : "") + x.shadeManual;
         if (oldVal) currentOrderShades = [{ target: 'ALL', val: oldVal }];
@@ -3730,6 +3739,13 @@ modal = function(t) {
     originalModalFn(t); // Call old modal code
     
     if(t === 'ord') {
+        // --- FIX: UNLOCK FOR NEW CASES ---
+        let cTypeDrop = document.getElementById('o-ctype');
+        if(cTypeDrop) {
+            cTypeDrop.disabled = false;
+            cTypeDrop.classList.remove('opacity-50', 'cursor-not-allowed');
+        }
+        
         document.getElementById('o-id').setAttribute('readonly', true);
         document.getElementById('o-shade-manual').value = '';
         
