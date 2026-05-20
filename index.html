@@ -1532,13 +1532,12 @@ async function initApp() {
   
 // --- CENTRALIZED DATA FETCHING (SECURED) ---
 async function fetchSystemData() {
-   const [usersRes, storeRes, ordersRes, clientsRes] = await Promise.all([
-    // FIXED: Added 'password' to the select query so sessions don't expire on refresh
-    _supabase.from('dap_users').select('username, password, role, status, modules'),
-    _supabase.from('dap_store').select('*'),
-    _supabase.from('dap_job_orders').select('raw_data').order('received_date', { ascending: false }).limit(10000),
-    _supabase.from('dap_clients').select('raw_data')
-]);
+    const [usersRes, storeRes, ordersRes, clientsRes] = await Promise.all([
+        _supabase.from('dap_users').select('username, password, role, status, modules'),
+        _supabase.from('dap_store').select('*'),
+        _supabase.from('dap_job_orders').select('raw_data').order('received_date', { ascending: false }).limit(10000),
+        _supabase.from('dap_clients').select('raw_data')
+    ]);
 
     let data = storeRes.data;
     let map = {};
@@ -1547,11 +1546,23 @@ async function fetchSystemData() {
     }
 
     if (usersRes.data && usersRes.data.length > 0) {
-        // FIXED: Properly mapped p to u.password
-        S.u = usersRes.data.map(u => ({ n: u.username, p: u.password, d: u.role, s: u.status, m: u.modules }));
+        S.u = usersRes.data.map(u => {
+            // AUTO-FIX: Convert old 'STAFF' to 'CLINIC SUPPORT' automatically
+            let fixedRole = u.role;
+            if (fixedRole === 'STAFF') {
+                fixedRole = 'CLINIC SUPPORT';
+                // Silently update Supabase database in the background
+                _supabase.from('dap_users').update({ role: 'CLINIC SUPPORT' }).eq('username', u.username).then();
+            }
+            return { n: u.username, p: u.password, d: fixedRole, s: u.status, m: u.modules };
+        });
     } else {
         let oldUsers = map['dap_v4_u'] || [];
-        S.u = oldUsers.map(u => ({ n: u.n, p: u.p, d: u.d, s: u.s, m: u.m })); 
+        S.u = oldUsers.map(u => {
+            let fixedRole = u.d;
+            if (fixedRole === 'STAFF') fixedRole = 'CLINIC SUPPORT';
+            return { n: u.n, p: u.p, d: fixedRole, s: u.s, m: u.m };
+        }); 
     }
 
     // READ FROM REAL DATABASE ROWS INSTEAD OF THE BLOB
