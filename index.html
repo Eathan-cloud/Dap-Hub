@@ -121,7 +121,7 @@
                 <input id="r-name" class="inp text-center uppercase mb-3" placeholder="FULL NAME">
                 <select id="r-role" class="inp text-center font-bold mb-3">
                     <option value="ADMIN">ADMIN</option>
-                    <option value="STAFF">STAFF</option>
+                    <option value="CLINIC SUPPORT">CLINIC SUPPORT</option>
                     <option value="HR">HR</option>
                     <option value="PRODUCTION">PRODUCTION</option>
                     <option value="ACCOUNTING">ACCOUNTING</option>
@@ -4946,7 +4946,7 @@ function execPrint() {
     let defMods = ['dashboard'];
     if (finalRole === 'ADMIN') defMods = ADMIN_DEFAULT_MODS;
     else if (finalRole === 'STAFF') defMods = ['dashboard'];
-    else if (finalRole === 'HR') defMods = ['dashboard'];
+    else if (finalRole === 'CLINIC SUPPORT') defMods = ['dashboard'];
     else if (finalRole === 'PRODUCTION') defMods = ['dashboard'];
     else if (finalRole === 'ACCOUNTING') defMods = ['dashboard'];
 
