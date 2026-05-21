@@ -1139,7 +1139,17 @@
                 
                 <div><label class="text-[10px] font-bold text-gray-500 uppercase tracking-widest block mb-2">GENERATED / MANUAL ID</label><input id="o-id" class="inp font-black text-slate-400 bg-slate-100 !py-3" readonly></div>
                 
-                <div><label class="text-[10px] font-bold text-gray-500 uppercase tracking-widest block mb-2">DOCTOR</label><select id="o-doc" class="inp !py-3 shadow-sm" onchange="fillDocInfo()"></select></div>
+                <!-- Replace the existing DOCTOR div inside #mod-ord -->
+<div>
+    <label class="text-[10px] font-bold text-gray-500 uppercase tracking-widest flex justify-between items-center mb-2">
+        DOCTOR
+        <div class="flex gap-1">
+            <button type="button" onclick="addDoctor()" class="bg-blue-600 text-white w-5 h-5 rounded-full shadow hover:scale-110 flex items-center justify-center font-black">+</button>
+            <button type="button" onclick="delDoctor()" class="bg-red-600 text-white w-5 h-5 rounded-full shadow hover:scale-110 flex items-center justify-center font-black">-</button>
+        </div>
+    </label>
+    <select id="o-doc" class="inp !py-3 shadow-sm" onchange="fillDocInfo()"></select>
+</div>
                 <div><label class="text-[10px] font-bold text-gray-500 uppercase tracking-widest block mb-2">PIC (Name / Info)</label><input id="o-pic" type="text" class="inp uppercase !py-3 shadow-sm"></div>
                 <div><label class="text-[10px] font-bold text-gray-500 uppercase tracking-widest block mb-2">PATIENT</label><input id="o-pat" class="inp uppercase !py-3 shadow-sm"></div>
                 
@@ -3750,7 +3760,8 @@ modal = function(t) {
     originalModalFn(t); // Call old modal code
     
     if(t === 'ord') {
-        // --- FIX: UNLOCK FOR NEW CASES ---
+        // THE ANNOYING ALERT HAS BEEN DELETED FROM HERE
+        
         let cTypeDrop = document.getElementById('o-ctype');
         if(cTypeDrop) {
             cTypeDrop.disabled = false;
@@ -3766,7 +3777,6 @@ modal = function(t) {
         renderFdiTeeth();
     }
 }
-
 // --- PRINTING DELIVERY RECEIPT ---
 function thermal(i) {
     // Open the Print Pop-Up first
@@ -4065,6 +4075,45 @@ function execPrint() {
         
         function fillDocInfo(){ 
         }
+        async function addDoctor() {
+            let docName = prompt("Enter New Doctor's Name:");
+            if (docName && docName.trim() !== "") {
+                docName = docName.toUpperCase();
+                
+                if (S.d.find(x => x.n === docName)) return alert("Doctor already registered in the system!");
+                
+                // This automatically builds the profile and drops it into your Client Directory
+                let newClient = {
+                    id: "DOC-" + (S.d.length + 101),
+                    n: docName,
+                    status: 'ACTIVE',
+                    addr: '',
+                    phone: ''
+                };
+                
+                S.d.push(newClient);
+                await sv('d'); // Sync to cloud instantly
+                
+                popSel('o-doc', S.d.map(x => x.n)); // Update the dropdown
+                document.getElementById('o-doc').value = docName; // Auto-select the new doctor
+                if(typeof rDocs === 'function') rDocs(); // Refresh directory in the background
+                
+                alert("Doctor added! They are now available in the Client Directory for future editing.");
+            }
+        }
+
+        async function delDoctor() {
+            let docName = document.getElementById('o-doc').value;
+            if (!docName) return alert("Please select a doctor from the dropdown to delete.");
+            
+            if (confirm(`Are you absolutely sure you want to delete Doctor: ${docName}?`)) {
+                S.d = S.d.filter(x => x.n !== docName);
+                await sv('d'); // Sync removal to cloud
+                
+                popSel('o-doc', S.d.map(x => x.n)); // Update the dropdown
+                if(typeof rDocs === 'function') rDocs(); // Refresh directory
+            }
+        }
         
         function toggleQR() { 
         let payEl = document.getElementById('o-pay');
@@ -4105,7 +4154,6 @@ function execPrint() {
         document.getElementById('mod-doc').classList.add('active');
     }
     if (t === 'ord') {
-        if (S.d.length === 0) return alert("System Requires active Client Roster first.");
         document.querySelectorAll('#mod-ord input:not([readonly]):not([type="file"])').forEach(i => i.value = '');
         hideClinicSupportFields(false);
 
