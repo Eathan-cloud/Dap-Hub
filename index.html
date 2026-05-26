@@ -6017,18 +6017,52 @@ function printPrescriptionPad(idx) {
             body.scrollTop = body.scrollHeight;
         }
        async function delChat(msgId) {
-    if(!confirm("Delete this transmission permanently?")) return;
-   
+    // Katulad ng ibang delete, hihingi tayo ng rason
+    let reason = prompt("SECURITY PROTOCOL: Please enter the exact reason for deleting this message:");
+    if (reason === null || reason.trim() === "") {
+        alert("Deletion Aborted: A valid reason is required.");
+        return;
+    }
+
+    if (!confirm(`WARNING: Are you absolutely sure you want to delete this message?\n\nReason logged: "${reason.toUpperCase()}"`)) {
+        return;
+    }
+
+    window.isSavingOrder = true;
+
+    // Kunin ang latest messages sa cloud
     const { data } = await _supabase.from('dap_store').select('data').eq('id', 'dap_v4_msg').single();
     let liveMsgs = data ? data.data : [...S.msg];
-   
+    
+    // Hanapin yung mismong message bago burahin para mai-save sa Recycle Bin
+    let msgToDelete = liveMsgs.find((x, i) => (x.id || `OLD-MSG-${i}`) === msgId);
+    
+    // Alisin sa active chat list
     liveMsgs = liveMsgs.filter((x, i) => (x.id || `OLD-MSG-${i}`) !== msgId);
-   
+    
+    // Ipasok sa Recycle Bin
+    if (msgToDelete) {
+        if (!S.trash) S.trash = [];
+        S.trash.push({
+            k: 'chat',
+            item: { id: msgId, n: "Deleted Message from " + msgToDelete.f, msg: msgToDelete.m },
+            reason: reason.toUpperCase(),
+            by: S.curr ? S.curr.n : 'UNKNOWN',
+            ts: new Date().toLocaleString()
+        });
+        await sv('trash'); // I-save agad ang Recycle bin sa Cloud
+    }
+
+    // I-save ang updated chat list sa Cloud
     const { error } = await _supabase.from('dap_store').upsert({ id: 'dap_v4_msg', data: liveMsgs });
     if (error) alert("SUPABASE BLOCKED THE DELETE! Error: " + error.message);
 
+    window.isSavingOrder = false;
     S.msg = liveMsgs;
     rChat();
+    
+    // I-refresh ang Recycle Bin display kung nasa Architect module
+    if (document.getElementById('p-architect').classList.contains('active')) rTrash();
 }
 
         async function reactChat(msgId, emoji) {
