@@ -1419,7 +1419,7 @@
     </div>
 
     <script>
-       // --- SUPABASE CONFIGURATION ---
+        // --- SUPABASE CONFIGURATION ---
         const { createClient } = supabase;
         const supabaseUrl = 'https://vjbqyzutwxuulqlnabvx.supabase.co'; //
         const supabaseKey = 'sb_publishable_nJ-7b9m08YScMS1w87gz-w_4t_WhPtI'; //
@@ -3797,53 +3797,155 @@ async function uploadToSupabase(file) {
     const { data: publicUrlData } = _supabase.storage.from('dap_uploads').getPublicUrl(fileName);
     return publicUrlData.publicUrl;
 }
+// --- NEW RENDER & REMOVE FUNCTIONS FOR STL & FORMS ---
+function renderStlFiles() {
+    let val = document.getElementById('o-stl-url').value;
+    let container = document.getElementById('o-stl-name');
+    if (!val) { container.innerHTML = 'NO FILE'; return; }
+    
+    try {
+        let stlData = JSON.parse(val);
+        if (stlData.urls && stlData.urls.length > 0) {
+            container.className = "flex flex-col gap-1 w-full max-w-[200px]"; 
+            container.innerHTML = stlData.urls.map((u, i) => `
+                <div class="flex items-center justify-between gap-2 bg-white px-2 py-1 border rounded shadow-sm w-full">
+                    <span class="truncate max-w-[120px] text-[9px] font-bold text-slate-600" title="${stlData.names[i]}">${stlData.names[i]}</span>
+                    <button type="button" onclick="removeStlFile(${i})" class="text-red-500 hover:text-red-700 font-black text-xs px-1" title="Remove File">×</button>
+                </div>
+            `).join('');
+        } else {
+            container.innerHTML = 'NO FILE';
+        }
+    } catch(e) { container.innerHTML = 'FILE FORMAT ERROR'; }
+}
+
+function removeStlFile(index) {
+    let val = document.getElementById('o-stl-url').value;
+    if (!val) return;
+    try {
+        let stlData = JSON.parse(val);
+        stlData.urls.splice(index, 1);
+        stlData.names.splice(index, 1);
+        document.getElementById('o-stl-url').value = stlData.urls.length > 0 ? JSON.stringify(stlData) : "";
+        renderStlFiles();
+    } catch(e) { console.error(e); }
+}
+
+function renderFormFiles() {
+    let val = document.getElementById('o-form-url').value;
+    let container = document.getElementById('o-form-preview-container');
+    if (!val) { container.innerHTML = ''; return; }
+    
+    let urls = [];
+    try { 
+        urls = JSON.parse(val); 
+        if (!Array.isArray(urls)) urls = [val];
+    } catch(e) { 
+        urls = [val]; 
+    }
+
+    if (urls.length > 0 && urls[0] !== "") {
+        container.innerHTML = urls.map((url, i) => {
+            let isZip = url.endsWith('.zip') || url.endsWith('.rar');
+            let imgSrc = isZip ? "https://cdn-icons-png.flaticon.com/512/337/337958.png" : url;
+            return `
+            <div class="relative inline-block mt-2 mr-2">
+                <img src="${imgSrc}" class="w-12 h-12 object-cover rounded-lg border shadow-sm bg-white cursor-pointer hover:opacity-80" onclick="window.open('${url}','_blank')">
+                <button type="button" onclick="removeFormFile(${i}, event)" class="absolute -top-2 -right-2 bg-red-500 hover:bg-red-600 text-white rounded-full w-5 h-5 flex items-center justify-center text-[12px] font-black shadow-md z-50 cursor-pointer" title="Remove File">×</button>
+            </div>`;
+        }).join('');
+    } else {
+        container.innerHTML = '';
+    }
+}
+
+function removeFormFile(index, e) {
+    if (e) e.stopPropagation(); // Pinipigilan mag-trigger yung image click
+    
+    let val = document.getElementById('o-form-url').value;
+    if (!val) return;
+    
+    let urls = [];
+    try { 
+        urls = JSON.parse(val); 
+        if (!Array.isArray(urls)) urls = [val];
+    } catch(e) { 
+        urls = [val]; 
+    }
+
+    urls.splice(index, 1);
+    document.getElementById('o-form-url').value = urls.length > 0 ? JSON.stringify(urls) : "";
+    renderFormFiles();
+}
+
+function removeProdImg(index, e) {
+    e.stopPropagation();
+    if (selectedProdIdx === -1 || !S.o[selectedProdIdx]) return;
+    if (!confirm("Are you sure you want to remove this QC Image?")) return;
+    
+    try {
+        let qcImages = JSON.parse(S.o[selectedProdIdx].prodImg);
+        if (!Array.isArray(qcImages)) qcImages = [S.o[selectedProdIdx].prodImg];
+        
+        qcImages.splice(index, 1);
+        S.o[selectedProdIdx].prodImg = qcImages.length > 0 ? JSON.stringify(qcImages) : "";
+        
+        sv('o'); 
+        renderProdDetails(); 
+    } catch (err) {
+        console.error("Error removing QC image", err);
+    }
+}
+
 async function upStlFiles(inp) {
     if (inp.files && inp.files.length > 0) {
-        let nameEl = document.getElementById('o-stl-name');
-        nameEl.innerText = `UPLOADING ${inp.files.length} FILES...`;
+        let container = document.getElementById('o-stl-name');
+        container.innerHTML = `<span class="text-[9px] font-bold text-slate-500">UPLOADING ${inp.files.length} FILES...</span>`;
         
-        let urls = [];
-        let names = [];
+        let existingData = { urls: [], names: [] };
+        let currentVal = document.getElementById('o-stl-url').value;
+        if (currentVal) {
+            try { existingData = JSON.parse(currentVal); } catch(e){}
+        }
+
         for(let i = 0; i < inp.files.length; i++) {
             let publicUrl = await uploadToSupabase(inp.files[i]);
             if(publicUrl) {
-                urls.push(publicUrl);
-                names.push(inp.files[i].name);
+                existingData.urls.push(publicUrl);
+                existingData.names.push(inp.files[i].name);
             }
         }
         
-        if(urls.length > 0) {
-            nameEl.innerText = `${urls.length} FILE(S) UPLOADED`;
-            document.getElementById('o-stl-url').value = JSON.stringify({urls: urls, names: names});
-        } else {
-            nameEl.innerText = "UPLOAD FAILED";
-            document.getElementById('o-stl-url').value = "";
-        }
+        document.getElementById('o-stl-url').value = existingData.urls.length > 0 ? JSON.stringify(existingData) : "";
+        renderStlFiles();
+        inp.value = ''; 
     }
 }
 
 async function upFormFiles(inp) {
     if (inp.files && inp.files.length > 0) {
         let container = document.getElementById('o-form-preview-container');
-        container.innerHTML = `<span class="text-[9px] font-bold text-slate-500 ml-2">UPLOADING ${inp.files.length} FILES...</span>`;
+        container.innerHTML += `<span class="text-[9px] font-bold text-slate-500 ml-2">UPLOADING...</span>`;
         
-        let urls = [];
+        let existingUrls = [];
+        let currentVal = document.getElementById('o-form-url').value;
+        if (currentVal) {
+            try { 
+                existingUrls = JSON.parse(currentVal); 
+                if(!Array.isArray(existingUrls)) existingUrls = [currentVal]; 
+            } catch(e){
+                existingUrls = [currentVal];
+            }
+        }
+
         for(let i = 0; i < inp.files.length; i++) {
             let publicUrl = await uploadToSupabase(inp.files[i]);
-            if(publicUrl) urls.push(publicUrl);
+            if(publicUrl) existingUrls.push(publicUrl);
         }
         
-        if(urls.length > 0) {
-            document.getElementById('o-form-url').value = JSON.stringify(urls);
-            container.innerHTML = urls.map(url => {
-                let isZip = url.endsWith('.zip') || url.endsWith('.rar');
-                let imgSrc = isZip ? "https://cdn-icons-png.flaticon.com/512/337/337958.png" : url;
-                return `<img src="${imgSrc}" class="w-10 h-10 object-cover rounded-lg border shadow-sm bg-white cursor-pointer hover:opacity-80" onclick="window.open('${url}','_blank')">`;
-            }).join('');
-        } else {
-            container.innerHTML = `<span class="text-[9px] font-bold text-red-500 ml-2">UPLOAD FAILED</span>`;
-            document.getElementById('o-form-url').value = "";
-        }
+        document.getElementById('o-form-url').value = existingUrls.length > 0 ? JSON.stringify(existingUrls) : "";
+        renderFormFiles(); 
+        inp.value = ''; 
     }
 }
 // ==========================================
@@ -5180,10 +5282,12 @@ function printPrescriptionPad(idx) {
         if (typeof renderShadeList === 'function') renderShadeList();
         // ---> END <---
        
-        document.getElementById('o-stl-name').innerText = 'NO FILE';
-        if(document.getElementById('o-stl-url')) document.getElementById('o-stl-url').value = '';
-        if(document.getElementById('o-form-url')) document.getElementById('o-form-url').value = '';
-        if(document.getElementById('o-form-preview-container')) document.getElementById('o-form-preview-container').innerHTML = '';
+        // Clear STL & Forms properly
+        document.getElementById('o-stl-url').value = '';
+        renderStlFiles();
+        
+        document.getElementById('o-form-url').value = '';
+        renderFormFiles();
 
         document.getElementById('o-idx').value = "";
         document.getElementById('o-qty').value = "1";
@@ -5485,6 +5589,7 @@ function printPrescriptionPad(idx) {
                                      onclick="openCarousel('${safeUrlsStr}', ${i})" 
                                      oncontextmenu="triggerDownload('${imgUrl}', event)" 
                                      title="Left Click: View Full | Right Click: Download">
+                                <button type="button" onclick="removeProdImg(${i}, event)" class="absolute -top-2 -right-2 bg-red-500 hover:bg-red-600 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs opacity-0 group-hover:opacity-100 transition-opacity pd-editable shadow-md" ${disabledState} title="Delete Image">×</button>
                             </div>
                         `).join('');
 
