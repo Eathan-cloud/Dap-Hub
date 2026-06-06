@@ -476,30 +476,57 @@
         </div>
         <div class="table-wrap w-full overflow-x-auto flex-1 overflow-y-auto rounded-none border-0 custom-scroll max-h-[500px]">
             <table class="w-full !min-w-[1400px] border-collapse">
-                <thead class="bg-yellow-400 sticky top-0 z-20 shadow-sm text-black">
-                    <tr>
-                        <th class="!text-[10px] border border-yellow-500 !bg-yellow-400 !text-black">S.l No.</th>
-                        <th class="!text-[10px] border border-yellow-500 !bg-yellow-400 !text-black">Case No.</th>
-                        <th class="!text-[10px] border border-yellow-500 !bg-yellow-400 !text-black">Clinic Name</th>
-                        <th class="!text-[10px] border border-yellow-500 !bg-yellow-400 !text-black">Attending Dentist</th>
-                        <th class="!text-[10px] border border-yellow-500 !bg-yellow-400 !text-black">Patient Name</th>
-                        <th class="!text-[10px] border border-yellow-500 !bg-yellow-400 !text-black text-center">No. Of Unit</th>
-                        <th class="!text-[10px] border border-yellow-500 !bg-yellow-400 !text-black">Particulars</th>
-                        <th class="!text-[10px] border border-yellow-500 !bg-yellow-400 !text-black text-right">Price</th>
-                        <th class="!text-[10px] border border-yellow-500 !bg-yellow-400 !text-black">Date</th>
-                        <th class="!text-[10px] border border-yellow-500 !bg-yellow-400 !text-black">Payment SI</th>
-                        <th class="!text-[10px] border border-yellow-500 !bg-yellow-400 !text-black">SI No.</th>
-                        <th class="!text-[10px] border border-yellow-500 !bg-yellow-400 !text-black text-right">Balance</th>
-                        <th class="!text-[10px] border border-yellow-500 !bg-yellow-400 !text-black">Status</th>
-                        <th class="!text-[10px] border border-yellow-500 !bg-yellow-400 !text-black text-center">Action</th>
-                    </tr>
-                </thead>
-                <tbody id="b-soa-list"></tbody>
-                <tfoot class="bg-blue-50 sticky bottom-0 z-10 shadow-sm border-t-2 border-blue-200" id="b-soa-footer"></tfoot>
-            </table>
+    <thead class="bg-yellow-400 sticky top-0 z-20 shadow-sm text-black">
+        <tr>
+            <th class="!text-[10px] border border-yellow-500 !bg-yellow-400 !text-black">S.l No.</th>
+            <th class="!text-[10px] border border-yellow-500 !bg-yellow-400 !text-black">Case No.</th>
+            <th class="!text-[10px] border border-yellow-500 !bg-yellow-400 !text-black">Clinic Name</th>
+            <th class="!text-[10px] border border-yellow-500 !bg-yellow-400 !text-black">Attending Dentist</th>
+            <th class="!text-[10px] border border-yellow-500 !bg-yellow-400 !text-black">Patient Name</th>
+            <th class="!text-[10px] border border-yellow-500 !bg-yellow-400 !text-black text-center">No. Of Unit</th>
+            <th class="!text-[10px] border border-yellow-500 !bg-yellow-400 !text-black">Particulars</th>
+            <th class="!text-[10px] border border-yellow-500 !bg-yellow-400 !text-black text-right">Price</th>
+            <th class="!text-[10px] border border-yellow-500 !bg-yellow-400 !text-black">Date</th>
+            <th class="!text-[10px] border border-yellow-500 !bg-yellow-400 !text-black">Payment Reference</th>
+            <th class="!text-[10px] border border-yellow-500 !bg-yellow-400 !text-black text-right">Balance</th>
+            <th class="!text-[10px] border border-yellow-500 !bg-yellow-400 !text-black">Status</th>
+            <th class="!text-[10px] border border-yellow-500 !bg-yellow-400 !text-black text-center">Action</th>
+        </tr>
+    </thead>
+    <tbody id="b-soa-list"></tbody>
+    <tfoot class="bg-blue-50 sticky bottom-0 z-10 shadow-sm border-t-2 border-blue-200" id="b-soa-footer"></tfoot>
+</table>
         </div>
     </div>
-   
+   <div class="card p-0 flex flex-col mb-8 shadow-lg border-0 rounded-2xl overflow-hidden bg-white border-t-4 border-t-orange-500">
+        <div class="p-5 bg-orange-50 border-b flex justify-between items-center shrink-0">
+            <h3 class="font-black uppercase text-orange-900 tracking-widest text-xs flex items-center gap-2">
+                ⏳ PENDING SALES INVOICES (DR ISSUED)
+            </h3>
+            <p class="text-[9px] font-bold text-orange-700 uppercase tracking-widest">Select a DR below to issue an S.I.</p>
+        </div>
+        <div class="table-wrap w-full overflow-x-auto flex-1 overflow-y-auto rounded-none border-0 custom-scroll max-h-[350px]">
+            <table class="w-full text-left border-collapse">
+    <thead class="bg-orange-200 sticky top-0 z-10 shadow-sm text-black">
+        <tr>
+            <th class="!text-[10px] border border-orange-300 !bg-orange-200 p-3">DR No.</th>
+            <th class="!text-[10px] border border-orange-300 !bg-orange-200 p-3">Date</th>
+            <th class="!text-[10px] border border-orange-300 !bg-orange-200 p-3">Case ID</th>
+            <th class="!text-[10px] border border-orange-300 !bg-orange-200 p-3">Client (Doctor)</th>
+            <th class="!text-[10px] border border-orange-300 !bg-orange-200 p-3">Address</th>
+            <th class="!text-[10px] border border-orange-300 !bg-orange-200 p-3">TIN</th>
+            <th class="!text-[10px] border border-orange-300 !bg-orange-200 p-3">PO #</th>
+            <th class="!text-[10px] border border-orange-300 !bg-orange-200 p-3 text-center">Quantity</th>
+            <th class="!text-[10px] border border-orange-300 !bg-orange-200 p-3 text-center">Unit</th>
+            <th class="!text-[10px] border border-orange-300 !bg-orange-200 p-3">Products</th>
+            <th class="!text-[10px] border border-orange-300 !bg-orange-200 p-3">Particulars / Notes</th>
+            <th class="!text-[10px] border border-orange-300 !bg-orange-200 p-3 text-center">Action</th>
+        </tr>
+    </thead>
+    <tbody id="b-pending-si"></tbody>
+</table>
+        </div>
+    </div>
     <div class="grid grid-cols-1 xl:grid-cols-5 gap-6 mb-8">
         <div class="card p-0 col-span-1 xl:col-span-3 flex flex-col h-[650px] shadow-md border-0 rounded-2xl overflow-hidden">
             <div class="p-5 bg-gradient-to-r from-slate-50 to-white border-b flex flex-col sm:flex-row justify-between sm:items-center shrink-0 gap-3">
@@ -553,7 +580,7 @@
                             <th class="!bg-emerald-50 !text-emerald-900 !text-[10px]">DENTIST NAME</th>
                             <th class="!bg-emerald-50 !text-emerald-900 !text-[10px]">TOTAL COST</th>
                             <th class="!bg-emerald-50 !text-emerald-900 !text-[10px]">AMOUNT PAID</th>
-                            <th class="!bg-emerald-50 !text-emerald-900 !text-[10px]">PAYMENT NOTES</th>
+                            <th class="!bg-emerald-50 !text-emerald-900 !text-[10px]">PAYMENT REFERENCE</th>
                             <th class="!bg-emerald-50 !text-emerald-900 !text-[10px]">RECEIVED BY</th>
                             <th class="!bg-emerald-50 !text-emerald-900 !text-[10px]">ACTION</th>
                         </tr>
@@ -902,7 +929,11 @@
             <label class="text-[10px] font-bold text-gray-500 uppercase tracking-widest block mb-1">Business Address</label>
             <input id="si-addr" class="inp shadow-sm bg-slate-50 uppercase text-slate-800" placeholder="Enter Business Address">
         </div>
-        
+        <div class="mb-4">
+            <label class="text-[10px] font-bold text-gray-500 uppercase tracking-widest block mb-1">OVERRIDE FINAL AMOUNT (₱)</label>
+            <input id="si-amount-override" type="number" class="inp shadow-inner bg-blue-50 text-blue-800 font-black text-lg !py-4" placeholder="Enter manual amount for this S.I.">
+            <p class="text-[9px] text-gray-400 mt-1 font-bold">Leave blank to use the system's default calculated total.</p>
+        </div>
         <div class="mb-8">
             <label class="text-[10px] font-bold text-gray-500 uppercase tracking-widest block mb-1">Received the Amount Of (Text)</label>
             <input id="si-amount-text" class="inp shadow-sm bg-slate-50 uppercase text-slate-800" placeholder="e.g. One Thousand Pesos Only">
@@ -1246,10 +1277,9 @@
                 <input type="hidden" id="o-idx">
                
                 <div>
-                    <label class="text-[10px] font-bold text-gray-500 uppercase tracking-widest flex justify-between items-center mb-2">CASE TYPE <button type="button" onclick="addOpt('ctype')" class="bg-slate-800 text-white w-5 h-5 rounded-full shadow hover:scale-110 flex items-center justify-center">+</button></label>
+                    <label class="text-[10px] font-bold text-gray-500 uppercase tracking-widest flex justify-between items-center mb-2">CASE TYPE</label>
                     <select id="o-ctype" class="inp bg-blue-50 font-black text-blue-800 !py-3 shadow-sm border-blue-100" onchange="onTypeChange(true)"></select>
-                </div>
-               
+                </div>               
                 <div><label class="text-[10px] font-bold text-gray-500 uppercase tracking-widest block mb-2">GENERATED / MANUAL ID</label><input id="o-id" class="inp font-black text-slate-400 bg-slate-100 !py-3" readonly></div>
                
                 <!-- Replace the existing DOCTOR div inside #mod-ord -->
@@ -1709,17 +1739,16 @@ async function fetchSystemData() {
 
     if (usersRes.data && usersRes.data.length > 0) {
         S.u = usersRes.data.map(u => {
-            // AUTO-FIX: Convert old 'STAFF' to 'CLINIC SUPPORT' automatically
             let fixedRole = u.role;
             if (fixedRole === 'STAFF') {
                 fixedRole = 'CLINIC SUPPORT';
-                // Silently update Supabase database in the background
                 _supabase.from('dap_users').update({ role: 'CLINIC SUPPORT' }).eq('username', u.username).then();
             }
             return { n: u.username, p: u.password, d: fixedRole, s: u.status, m: u.modules };
         });
     } else {
         let oldUsers = map['dap_v4_u'] || [];
+        if(oldUsers && oldUsers.data && !Array.isArray(oldUsers)) oldUsers = oldUsers.data;
         S.u = oldUsers.map(u => {
             let fixedRole = u.d;
             if (fixedRole === 'STAFF') fixedRole = 'CLINIC SUPPORT';
@@ -1727,26 +1756,32 @@ async function fetchSystemData() {
         });
     }
 
-    // READ FROM REAL DATABASE ROWS INSTEAD OF THE BLOB
     S.o = (ordersRes.data && ordersRes.data.length > 0) ? ordersRes.data.map(row => row.raw_data) : (map['dap_v4_o'] || []);
     S.d = (clientsRes.data && clientsRes.data.length > 0) ? clientsRes.data.map(row => row.raw_data) : (map['dap_v4_d'] || []);
 
-    S.salesTeam = map['dap_v4_salesTeam'] || S.salesTeam;
-    S.pipeline = map['dap_v4_pipeline'] || S.pipeline;
-    S.pr = map['dap_v4_pr'] || S.pr;
-    S.prData = map['dap_v4_prData'] || S.prData;
-    S.v = map['dap_v4_v'] || S.v;
-    S.locs = map['dap_v4_locs'] || S.locs;
-    S.stats = map['dap_v4_stats'] || S.stats;
-    S.ctypes = map['dap_v4_ctypes'] || S.ctypes;
-    S.shades = map['dap_v4_shades'] || S.shades;
-    S.fonts = map['dap_v4_fonts'] || S.fonts;
-    S.trash = map['dap_v4_trash'] || S.trash;
-    S.dynMods = map['dap_v4_dynMods'] || S.dynMods;
-    S.dynModContent = map['dap_v4_dynModContent'] || S.dynModContent;
-    S.techs = map['dap_v4_techs'] || S.techs;
-    S.sys = map['dap_v4_sys'] || S.sys;
-    S.msg = map['dap_v4_msg'] || S.msg;
+    // SECURITY FIX: The unwrapper ensures arrays stay arrays and don't break the UI
+    const unwrap = (val, fallback) => {
+        if (!val) return fallback;
+        if (typeof val === 'object' && !Array.isArray(val) && val.data) return val.data;
+        return val;
+    };
+
+    S.salesTeam = unwrap(map['dap_v4_salesTeam'], S.salesTeam);
+    S.pipeline = unwrap(map['dap_v4_pipeline'], S.pipeline);
+    S.pr = unwrap(map['dap_v4_pr'], S.pr);
+    S.prData = unwrap(map['dap_v4_prData'], S.prData);
+    S.v = unwrap(map['dap_v4_v'], S.v);
+    S.locs = unwrap(map['dap_v4_locs'], S.locs);
+    S.stats = unwrap(map['dap_v4_stats'], S.stats);
+    S.ctypes = ["AC", "TAC", "MAC", "3D MODEL", "MANUAL"];
+    S.shades = unwrap(map['dap_v4_shades'], S.shades);
+    S.fonts = unwrap(map['dap_v4_fonts'], S.fonts);
+    S.trash = unwrap(map['dap_v4_trash'], S.trash);
+    S.dynMods = unwrap(map['dap_v4_dynMods'], S.dynMods);
+    S.dynModContent = unwrap(map['dap_v4_dynModContent'], S.dynModContent);
+    S.techs = unwrap(map['dap_v4_techs'], S.techs);
+    S.sys = unwrap(map['dap_v4_sys'], S.sys) || {};
+    S.msg = unwrap(map['dap_v4_msg'], S.msg);
 }
         // --- SECURE AUTHENTICATION PROTOCOL ---
 async function login() {
@@ -2735,6 +2770,8 @@ async function del(k, i, e) {
 
     rSOA();
     viewRelatedPayments(currentPayCaseIdx);
+
+    rPendingSI();
 }
 
 // INLINE DATA SAVING FOR INVOICE TRACKER
@@ -2744,7 +2781,50 @@ function updateSOAField(idx, field, value) {
         sv('o'); 
     }
 }
+function rPendingSI() {
+    let tbody = document.getElementById('b-pending-si');
+    if (!tbody) return;
 
+    // Find cases where DR (receiptNo) exists but SI (siNo) does not
+    let pendingCases = S.o.map((x, i) => ({...x, originalIdx: i}))
+        .filter(x => x.st !== 'VOID' && x.st !== 'CANCELLED' && x.receiptNo && !x.siNo);
+
+    tbody.innerHTML = pendingCases.map(x => {
+        // Fetch specific client info
+        let docObj = S.d.find(d => d.n === x.doc) || {};
+        let addr = docObj.addr || '-';
+        let tin = docObj.tin || '-';
+        let po = x.poNo || '-';
+        
+        let orderDate = x.date ? x.date.split('T')[0] : '-';
+        
+        let qty = x.qty || 1;
+        let unit = 'PCS';
+        
+        // Correctly mapped data
+        let products = (x.prods||[]).join(', ') || '-';
+        let particulars = x.rem || '-';
+
+        return `
+        <tr class="hover:bg-orange-50/50 transition-colors border-b border-orange-100">
+            <td class="font-black text-orange-700 p-3 text-sm align-top">${x.receiptNo}</td>
+            <td class="font-bold text-slate-500 p-3 text-[11px] align-top whitespace-nowrap">${orderDate}</td>
+            <td class="font-bold text-slate-700 p-3 text-xs align-top">${x.id}</td>
+            <td class="font-bold text-slate-800 p-3 text-[11px] align-top">${x.doc}</td>
+            <td class="font-bold text-slate-600 p-3 text-[10px] align-top">${addr}</td>
+            <td class="font-bold text-slate-600 p-3 text-[10px] align-top">${tin}</td>
+            <td class="font-bold text-slate-600 p-3 text-[10px] align-top">${po}</td>
+            <td class="font-bold text-slate-600 p-3 text-[10px] text-center align-top">${qty}</td>
+            <td class="font-bold text-slate-600 p-3 text-[10px] text-center align-top">${unit}</td>
+            <td class="font-bold text-slate-600 p-3 text-[10px] align-top max-w-[150px] whitespace-pre-wrap">${products}</td>
+            <td class="font-bold text-slate-600 p-3 text-[10px] align-top max-w-[200px] whitespace-pre-wrap">${particulars}</td>
+            <td class="p-3 text-center align-top">
+                <button onclick="autoPrintDR(${x.originalIdx})" class="btn btn-blue !py-2 !px-4 text-[10px] shadow-md uppercase tracking-widest w-full">PRINT D.R.</button>
+            </td>
+        </tr>
+        `;
+    }).join('') || `<tr><td colspan="12" class="text-center p-8 text-orange-700/50 font-black tracking-widest uppercase text-[10px]">No pending Delivery Receipts awaiting Invoice.</td></tr>`;
+}  
 function rSOA() {
     let clientFilter = document.getElementById('soa-client-filter');
     let selectedClient = clientFilter ? clientFilter.value : 'ALL';
@@ -2799,8 +2879,7 @@ function rSOA() {
                 <td class="font-bold text-[10px] p-2 text-slate-600 border">${particulars}</td>
                 <td class="font-black text-slate-800 p-2 text-right border">₱${tot.toLocaleString()}</td>
                 <td class="font-bold text-[10px] p-2 text-slate-500 border whitespace-nowrap">${x.date ? x.date.split('T')[0] : '-'}</td>
-                <td class="p-1 border"><input type="text" class="inp !py-1 !px-2 text-[10px] font-bold w-full text-red-600 bg-transparent" value="${x.paySi || ''}" onchange="updateSOAField(${originalIdx}, 'paySi', this.value)" placeholder="P-SI..."></td>
-                <td class="p-1 border"><input type="text" class="inp !py-1 !px-2 text-[10px] font-bold w-full bg-transparent" value="${x.siNo || ''}" onchange="updateSOAField(${originalIdx}, 'siNo', this.value)" placeholder="SI No..."></td>
+                <td class="p-1 border"><input type="text" class="inp !py-1 !px-2 text-[10px] font-bold w-full text-red-600 bg-transparent" value="${x.paySi || ''}" onchange="updateSOAField(${originalIdx}, 'paySi', this.value)" placeholder="Ref..."></td>
                 <td class="font-black text-rose-600 p-2 text-right border">₱${bal.toLocaleString()}</td>
                 <td class="p-1 border"><input type="text" class="inp !py-1 !px-2 text-[10px] font-bold w-full bg-transparent" value="${x.soaStatus || ''}" onchange="updateSOAField(${originalIdx}, 'soaStatus', this.value)" placeholder="Status"></td>
                 <td class="p-2 border text-center"><button onclick="printSalesInvoice(${originalIdx})" class="btn btn-blue !py-1 !px-2 text-[8px] shadow-sm tracking-widest">SALES INVOICE</button></td>
@@ -2808,20 +2887,21 @@ function rSOA() {
         `;
     }).join('');
 
-    if (tbody) tbody.innerHTML = rows || `<tr><td colspan="14" class="text-center p-8 text-slate-400 font-black tracking-widest uppercase text-[10px]">No invoices found for the selected period/client.</td></tr>`;
+    if (tbody) tbody.innerHTML = rows || `<tr><td colspan="13" class="text-center p-8 text-slate-400 font-black tracking-widest uppercase text-[10px]">No invoices found for the selected period/client.</td></tr>`;
     
     if (tfoot) {
         tfoot.innerHTML = `
             <tr>
                 <td colspan="7" class="text-right font-black text-xs p-4 uppercase text-blue-900 tracking-widest">SUBTOTALS:</td>
                 <td class="font-black text-slate-800 p-4 text-right">₱${sumTot.toLocaleString()}</td>
-                <td></td><td></td><td></td>
+                <td></td><td></td>
                 <td class="font-black text-rose-700 p-4 text-right">₱${sumBal.toLocaleString()}</td>
                 <td colspan="2"></td>
             </tr>
         `;
     }
 }
+        
 
 function printSOA() {
     let client = document.getElementById('soa-client-filter').value;
@@ -2894,7 +2974,7 @@ function printSOA() {
     });
 
     // --- FORCE EMPTY ROWS TO EXTEND TABLE DOWNWARDS ---
-    const MINIMUM_ROWS = 28; 
+    const MINIMUM_ROWS = 15; // Reduced from 28 to 15 to keep it on a single page
     let emptyRowsNeeded = MINIMUM_ROWS - tableData.length;
     for (let i = 0; i < emptyRowsNeeded; i++) {
         tableData.push(["", "", "", "", "", "", "", "", "", ""]);
@@ -2977,25 +3057,169 @@ function printSOA() {
 
     doc.save(`SOA_${client.replace(/[^a-z0-9]/gi, '_')}_${month}.pdf`);
 }
-function printSalesInvoice(idx) {
+function autoPrintDR(idx) {
+    const { jsPDF } = window.jspdf;
     let o = S.o[idx];
-    if (!o) {
-        alert("Error: Cannot find case data.");
-        return;
+    
+    if (!o) return alert("Error: Cannot find case data.");
+
+    let rNo = o.receiptNo || "N/A";
+    let poNo = o.poNo || "";
+    let cashier = o.cashier || "";
+
+    let doc = new jsPDF({ format: 'a4', unit: 'mm' });
+
+    // HEADER - LEFT
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(16);
+    doc.text("DENTAL ASSIST PHILIPPINES INC.", 15, 20);
+
+    doc.setFontSize(9);
+    doc.setFont("helvetica", "normal");
+    doc.text("VAT Reg. TIN: 775-796-617-00000", 15, 25);
+    doc.text("2F Units 2-B and 2-C Fl Center II Building 67 Primo Cruz Street", 15, 29);
+    doc.text("Old Zaniga 1550 City of Mandaluyong NCR, Second District Philippines", 15, 33);
+
+    // HEADER - RIGHT
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(14);
+    doc.text("DELIVERY RECEIPT", 145, 25);
+
+    doc.setTextColor(255, 0, 0);
+    doc.text("NO.  " + rNo, 145, 38);
+    doc.setTextColor(0, 0, 0);
+
+    // CUSTOMER DETAILS
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "normal");
+    doc.text("DELIVERED TO", 15, 48);
+
+    doc.text("Customer's Name: " + (o.doc || ""), 15, 56);
+    doc.line(45, 57, 135, 57);
+
+    doc.text("Date: " + (o.date ? o.date.split('T')[0] : ""), 140, 56);
+    doc.line(150, 57, 195, 57);
+
+    let docObj = S.d.find(d => d.n === o.doc);
+    let dAddr = docObj ? docObj.addr : "";
+
+    doc.text("Address: " + dAddr, 15, 64);
+    doc.line(32, 65, 195, 65);
+
+    let dTin = docObj ? docObj.tin : "";
+    doc.text("TIN: " + dTin, 15, 72);
+    doc.line(23, 73, 135, 73);
+
+    doc.text("P.O.#: " + poNo, 140, 72);
+    doc.line(153, 73, 195, 73);
+
+    // TABLE OUTLINE
+    doc.rect(15, 80, 180, 8); // Header row
+    doc.line(45, 80, 45, 230); // Vertical line 1
+    doc.line(75, 80, 75, 230); // Vertical line 2
+    doc.rect(15, 88, 180, 142); // Main body rect
+
+    doc.setFont("helvetica", "bold");
+    doc.text("QUANTITY", 30, 85.5, {align: 'center'});
+    doc.text("UNIT", 60, 85.5, {align: 'center'});
+    doc.text("DESCRIPTION", 135, 85.5, {align: 'center'});
+
+    // TABLE HORIZONTAL LINES
+    for(let j=96; j<=230; j+=8){
+        doc.line(15, j, 195, j);
     }
 
-    // Set index and clear previous inputs
-    document.getElementById('si-idx').value = idx;
-    document.getElementById('si-no').value = '';
+    // TABLE CONTENT
+    doc.setFontSize(8);
+    doc.setFont("helvetica", "normal");
+    let startY = 93.5;
     
-    // Auto-fill from existing client data if available
+    let totalQuantity = 0;
+
+    let prods = o.prods || [];
+    for(let p of prods) {
+        let itemQty = parseInt((o.pQtys && o.pQtys[p]) ? o.pQtys[p] : (o.qty || 1)) || 0;
+        
+        totalQuantity += itemQty;
+
+        doc.text(String(itemQty), 30, startY, {align: 'center'});        
+        doc.text("PCS", 60, startY, {align: 'center'});
+        
+        let descText = `${p} for ${o.pat}`;
+        
+        let splitDesc = doc.splitTextToSize(descText, 112);
+        let adjustedY = splitDesc.length > 1 ? startY - 1.5 : startY;
+        
+        doc.text(splitDesc, 78, adjustedY);
+
+        startY += 8;
+    }
+
+    doc.setFont("helvetica", "bold");
+    doc.text(String(totalQuantity), 30, 228.5, {align: 'center'});
+    doc.text("TOTAL QUANTITY", 78, 228.5);
+
+    // --- FOOTER SECTION ---
+    let footY = 240;
+
+    doc.setFontSize(9);
+    doc.text("Received above articles in good order and condition.", 195, footY, {align: 'right'});
+
+    doc.line(135, footY + 15, 195, footY + 15);
+    doc.text("Cashier / Authorized Representative", 165, footY + 19, {align: 'center'});
+    if(cashier && cashier.trim() !== "") {
+        doc.setFont("helvetica", "bold");
+        doc.text(cashier.toUpperCase(), 165, footY + 14, {align: 'center'});
+    }
+
+    doc.setFontSize(7);
+    doc.setFont("helvetica", "normal");
+    doc.text("20 Bklts. (50x3) 3001 - 4000", 15, footY);
+    doc.text("BIR Authority to Print No.: 041AU20260000001030", 15, footY + 3.5);
+    doc.text("Date of ATP: 02-09-2026", 15, footY + 7);
+
+    doc.setFont("helvetica", "bold");
+    doc.text("Printed by:", 15, footY + 12);
+    doc.text("DENNIS P. LUMBRES", 15, footY + 16);
+
+    doc.rect(48, footY + 9, 10, 6, 'S');
+    doc.setFontSize(8);
+    doc.text("LIC", 49, footY + 13.5);
+    
+    doc.setFontSize(7);
+    doc.setFont("helvetica", "normal");
+    doc.text("(02) 8 531 9583", 60, footY + 11.5);
+    doc.text("(02) 7 933 5266", 60, footY + 15);
+
+    doc.setFontSize(6.5);
+    doc.text("Room 304 3rd Floor MCR Industries Bldg. 495 Plainview 1550", 15, footY + 20);
+    doc.text("City of Mandaluyong NCR, Second District Philippines", 15, footY + 23);
+    doc.text("VAT REG TIN: 195-905-769-00000", 15, footY + 26);
+    doc.text("Printer's Accreditation No.: 041MP20250000000002", 15, footY + 29);
+    doc.text("Accreditation Date: 09-09-2025", 15, footY + 32);
+    doc.text("Expiration Date:      09-08-2030", 15, footY + 35);
+
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "bold");
+    doc.text('"THIS DOCUMENT IS NOT VALID FOR CLAIM OF INPUT TAX"', 195, footY + 34, {align: 'right'});
+
+    // Save exactly without inputs
+    doc.save(`Delivery_Receipt_${o.id}.pdf`);
+}
+function printSalesInvoice(idx) {
+    let o = S.o[idx];
+    if (!o) { alert("Error: Cannot find case data."); return; }
+
+    document.getElementById('si-idx').value = idx;
+    document.getElementById('si-no').value = o.siNo || ''; 
+    
     let docObj = S.d.find(d => d.n === o.doc);
     document.getElementById('si-reg-name').value = o.doc || "";
     document.getElementById('si-tin').value = docObj && docObj.tin ? docObj.tin : "";
     document.getElementById('si-addr').value = docObj && docObj.addr ? docObj.addr : "";
     document.getElementById('si-amount-text').value = "";
+    document.getElementById('si-amount-override').value = o.siAmountOverride || ""; // Load existing override if any
 
-    // Show the modal to collect data
     document.getElementById('mod-sales-invoice').classList.add('active');
 }
 
@@ -3108,11 +3332,17 @@ function execSalesInvoicePrint() {
         doc.setFont("helvetica", "normal");
         let contentY = startY + 12;
         let prods = o.prods || [];
-        let totCostNum = parseFloat(String(o.tot).replace(/,/g, '')) || 0;
+        
+        let overrideAmt = document.getElementById('si-amount-override').value.trim();
+        let manualTotal = overrideAmt !== "" ? parseFloat(overrideAmt) : null;
+        let totCostNum = manualTotal !== null ? manualTotal : (parseFloat(String(o.tot).replace(/,/g, '')) || 0);
+
+        // Distribute the manual total across items roughly to make the PDF math work
+        let customUnitCost = manualTotal !== null ? (manualTotal / (prods.length || 1)) : null;
 
         for(let p of prods) {
             let itemQty = parseInt((o.pQtys && o.pQtys[p]) ? o.pQtys[p] : (o.qty || 1)) || 0;
-            let pCost = S.pr[p] || 1500;
+            let pCost = customUnitCost !== null ? (customUnitCost / (itemQty || 1)) : (S.pr[p] || 1500);
             let pTotal = itemQty * pCost;
 
             doc.text(`${p} for ${o.pat}`, 17, contentY);
@@ -3125,6 +3355,16 @@ function execSalesInvoicePrint() {
 
         // SUMMARY BOXES AT BOTTOM
         let sumY = startY + 140; 
+        
+        // --- 1. PERFORM COMPUTATIONS ---
+        let totalSalesVatInc = totCostNum;
+        let vatableSales = totalSalesVatInc / 1.12;
+        let vatAmount = totalSalesVatInc - vatableSales;
+        let scPwdDiscount = 0; // Keep as 0 unless you have a specific field for this
+        
+        let addVat = vatAmount; 
+        let totalAmountDue = (vatableSales - scPwdDiscount) + addVat;
+        // -------------------------------
         
         // Left Summary Box
         doc.rect(15, sumY, 80, 24);
@@ -3140,7 +3380,14 @@ function execSalesInvoicePrint() {
         doc.text("ZERO-RATED SALES", 53, sumY + 16.5, {align: 'right'});
         doc.text("VAT-EXEMPT SALES", 53, sumY + 22.5, {align: 'right'});
 
-        // Right Summary Box - WIDENED TO FIX OVERFLOW
+        // Left Summary Box Values
+        doc.setFont("helvetica", "normal");
+        doc.text(vatableSales.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2}), 93, sumY + 4.5, {align: 'right'});
+        doc.text(vatAmount.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2}), 93, sumY + 10.5, {align: 'right'});
+        doc.text("0.00", 93, sumY + 16.5, {align: 'right'});
+        doc.text("0.00", 93, sumY + 22.5, {align: 'right'});
+
+        // Right Summary Box
         doc.rect(110, sumY, 85, 36); 
         for(let k = sumY + 6; k < sumY + 36; k += 6){
             doc.line(110, k, 195, k);
@@ -3155,11 +3402,16 @@ function execSalesInvoicePrint() {
         doc.text("ADD: VAT", 163, sumY + 28, {align: 'right'});
         doc.text("TOTAL AMOUNT DUE", 163, sumY + 34, {align: 'right'});
         
-        // Put Final Total
+        // Right Summary Box Computed Values
         doc.setFontSize(8);
-        doc.text(totCostNum.toLocaleString(undefined, {minimumFractionDigits:2}), 193, sumY + 34, {align: 'right'});
+        doc.text(totalSalesVatInc.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2}), 193, sumY + 4, {align: 'right'});
+        doc.text(vatAmount.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2}), 193, sumY + 10, {align: 'right'});
+        doc.text(vatableSales.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2}), 193, sumY + 16, {align: 'right'});
+        doc.text(scPwdDiscount.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2}), 193, sumY + 22, {align: 'right'});
+        doc.text(addVat.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2}), 193, sumY + 28, {align: 'right'});
+        doc.text(totalAmountDue.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2}), 193, sumY + 34, {align: 'right'});
 
-        // SC/PWD Section Below Right Summary Box - WIDENED
+        // SC/PWD Section Below Right Summary Box
         doc.rect(110, sumY + 38, 85, 12);
         doc.line(110, sumY + 44, 195, sumY + 44);
         doc.line(165, sumY + 38, 165, sumY + 50); 
@@ -3174,7 +3426,7 @@ function execSalesInvoicePrint() {
         doc.text("RECEIVED THE AMOUNT OF", 43, sumY + 33.5);
         
         doc.setFontSize(9);
-        doc.text(amountText.toUpperCase(), 20, sumY + 46);
+        doc.text(amountText.toUpperCase(), 52.5, sumY + 46, { align: "center" });
         doc.line(15, sumY + 48, 90, sumY + 48); // Underline
 
         // FOOTER INFO
@@ -3303,16 +3555,33 @@ function execSalesInvoicePrint() {
         return;
     }
 
-    window.isSavingOrder = true; window.isSyncing = true; window.lastSaveTime = Date.now();
+    window.isSavingOrder = true; 
+    window.isSyncing = true; 
+    window.lastSaveTime = Date.now();
 
     let order = S.o[caseIdx];
     let p = order.payments[payIdx];
-   
+    
     order.amtPaid -= p.amt;
     let removed = order.payments.splice(payIdx, 1)[0];
-   
+    
+    // --- NEW LOGIC: REBUILD OR REMOVE THE TXN REF IN INVOICE TRACKER ---
+    // Extract remaining valid OR/TXN REFs from the case's payment history
+    let remainingOrs = order.payments
+        .map(pay => pay.or)
+        .filter(or => or && or.trim() !== ''); // Keep only non-blank references
+        
+    if (remainingOrs.length > 0) {
+        // Join them back together (using Set to prevent duplicates)
+        order.paySi = [...new Set(remainingOrs)].join(', '); 
+    } else {
+        // Completely wipe the field if no payments with ORs are left
+        order.paySi = ''; 
+    }
+    // -------------------------------------------------------------------
+
     if (!S.trash) S.trash = [];
-   
+    
     // Log the user (S.curr.n) and the reason
     S.trash.push({
         k: 'payment',
@@ -3322,13 +3591,13 @@ function execSalesInvoicePrint() {
         by: S.curr ? S.curr.n : 'UNKNOWN',
         ts: new Date().toLocaleString()
     });
-   
+    
     try {
         const { error } = await _supabase.from('dap_job_orders').update({
             amount_paid: order.amtPaid,
             raw_data: order
         }).eq('id', order.id);
-       
+        
         if (error) alert("SUPABASE BLOCKED PAYMENT DELETE! Error: " + error.message);
     } catch(err) {
         console.error(err);
@@ -3336,8 +3605,13 @@ function execSalesInvoicePrint() {
 
     await sv('trash');
     window.lastSaveTime = Date.now();
-    rAcc();
-    setTimeout(() => { window.isSavingOrder = false; window.isSyncing = false; }, 4000);
+    
+    rAcc(); // This refreshes the tables so the Invoice Tracker updates instantly
+    
+    setTimeout(() => { 
+        window.isSavingOrder = false; 
+        window.isSyncing = false; 
+    }, 4000);
 }
         function viewPayment(caseIdx, payIdx) {
             let p = S.o[caseIdx].payments[payIdx];
@@ -3437,47 +3711,58 @@ function execSalesInvoicePrint() {
         }
 
         async function savePayment() {
-            if(currentPayCaseIdx === -1) return;
-            let amt = parseFloat(document.getElementById('pay-amt').value);
-            if(!amt || amt <= 0) return alert("System requires a valid numeric value.");
+    if(currentPayCaseIdx === -1) return;
+    let amt = parseFloat(document.getElementById('pay-amt').value);
+    if(!amt || amt <= 0) return alert("System requires a valid numeric value.");
 
-            // 1. ENGAGE ABSOLUTE LOCKS
-            window.isSavingOrder = true;
-            window.isSyncing = true;
-            window.lastSaveTime = Date.now();
+    // 1. ENGAGE ABSOLUTE LOCKS
+    window.isSavingOrder = true;
+    window.isSyncing = true;
+    window.lastSaveTime = Date.now();
 
-            let pDate = document.getElementById('pay-date').value;
-            let pMethod = document.getElementById('pay-method').value;
-            let pStaff = document.getElementById('pay-staff').value.toUpperCase();
-            let pOr = document.getElementById('pay-or').value.toUpperCase();
-            let pProof = document.getElementById('pay-proof-img').src;
-            let pCheque = document.getElementById('pay-cheque-num') ? document.getElementById('pay-cheque-num').value.toUpperCase() : '';
+    let pDate = document.getElementById('pay-date').value;
+    let pMethod = document.getElementById('pay-method').value;
+    let pStaff = document.getElementById('pay-staff').value.toUpperCase();
+    let pOr = document.getElementById('pay-or').value.toUpperCase();
+    let pProof = document.getElementById('pay-proof-img').src;
+    let pCheque = document.getElementById('pay-cheque-num') ? document.getElementById('pay-cheque-num').value.toUpperCase() : '';
 
-            let x = S.o[currentPayCaseIdx];
-            if(!x.payments) x.payments = [];
-           
-            x.payments.push({ date: pDate, amt: amt, method: pMethod, staff: pStaff, or: pOr, proof: pProof, cheque: pCheque });
-            x.amtPaid = (x.amtPaid || 0) + amt;
-            x.manualPayStatus = null;
+    let x = S.o[currentPayCaseIdx];
+    if(!x.payments) x.payments = [];
+    
+    x.payments.push({ date: pDate, amt: amt, method: pMethod, staff: pStaff, or: pOr, proof: pProof, cheque: pCheque });
+    x.amtPaid = (x.amtPaid || 0) + amt;
+    x.manualPayStatus = null;
 
-            // 2. WAIT FOR CLOUD TO SAVE
-            await sv('o');
-           
-            // 3. RENEW THE LOCK SO HEARTBEAT DOES NOT OVERWRITE SCREEN
-            window.lastSaveTime = Date.now();
-
-            // 4. UPDATE UI INSTANTLY
-            rAcc();
-            dash();
-            closeModals();
-            alert("Funds Authorized and Logged.");
-
-            // 5. KEEP SHIELD UP FOR 4 SECONDS
-            setTimeout(() => {
-                window.isSavingOrder = false;
-                window.isSyncing = false;
-            }, 4000);
+    // --- NEW LOGIC: AUTOMATICALLY CASCADE TXN REF TO INVOICE TRACKER ---
+    if (pOr) {
+        if (!x.paySi) {
+            x.paySi = pOr;
+        } else if (!x.paySi.includes(pOr)) {
+            // Append if multiple payments exist to avoid overwriting previous references
+            x.paySi += `, ${pOr}`; 
         }
+    }
+    // -------------------------------------------------------------------
+
+    // 2. WAIT FOR CLOUD TO SAVE
+    await sv('o');
+    
+    // 3. RENEW THE LOCK SO HEARTBEAT DOES NOT OVERWRITE SCREEN
+    window.lastSaveTime = Date.now();
+
+    // 4. UPDATE UI INSTANTLY
+    rAcc(); // This will also trigger rSOA() and update the Invoice Tracker
+    dash();
+    closeModals();
+    alert("Funds Authorized and Logged.");
+
+    // 5. KEEP SHIELD UP FOR 4 SECONDS
+    setTimeout(() => {
+        window.isSavingOrder = false;
+        window.isSyncing = false;
+    }, 4000);
+}
 
         function hideClinicSupportFields(hide) {
             ['wrap-o-comp', 'wrap-o-ret'].forEach(id => {
@@ -4255,7 +4540,7 @@ function renderShadeList() {
 function onTypeChange(clicked){
     let t = document.getElementById('o-ctype').value;
     let idField = document.getElementById('o-id');
-   
+    
     if(t === 'MANUAL') {
         idField.removeAttribute('readonly');
         idField.value = '';
@@ -4267,11 +4552,18 @@ function onTypeChange(clicked){
         idField.placeholder = '';
         idField.classList.add('bg-slate-100', 'text-slate-400');
         idField.classList.remove('bg-white', 'text-blue-700', 'shadow-inner');
-       
-        let count = S.o.filter(x => x.id && x.id.startsWith(t)).length;
-        idField.value = `${t}0${1655 + count}`;
+        
+        // FIX: Search for the highest ID so it never duplicates even if items are deleted
+        let highest = 1654;
+        S.o.forEach(x => {
+            if(x && x.id && x.id.startsWith(t)) {
+                let num = parseInt(x.id.replace(t + '0', ''));
+                if(!isNaN(num) && num > highest) highest = num;
+            }
+        });
+        idField.value = `${t}0${highest + 1}`;
     }
-   
+    
     if (clicked) {
         alert('System Notification: You have successfully selected Case Type - ' + t);
     }
@@ -6618,12 +6910,11 @@ function printPrescriptionPad(idx) {
         }
 
         // --- MASTER GLOBAL LIVE SYNC (Total System Pulse - 3 Sec Rule) ---
-      async function syncGlobalLive() {
+     async function syncGlobalLive() {
     window.lastSaveTime = window.lastSaveTime || 0;
     if (!S.curr || window.isSavingOrder || window.isEditingProd || window.isSyncing || (Date.now() - window.lastSaveTime < 5000)) return;
 
     try {
-        // PULL FROM REAL TABLES
         const [ordersRes, clientsRes, msgRes, vRes, prRes] = await Promise.all([
             _supabase.from('dap_job_orders').select('raw_data'),
             _supabase.from('dap_clients').select('raw_data'),
@@ -6646,24 +6937,37 @@ function printPrescriptionPad(idx) {
             if (JSON.stringify(newClients) !== JSON.stringify(S.d)) { S.d = newClients; needsRefresh = true; }
         }
 
-        if (msgRes && msgRes.data && msgRes.data.length !== S.msg.length) {
-            let isNew = msgRes.data.length > S.msg.length;
-            S.msg = msgRes.data;
-            let chatBox = document.getElementById('chat-box');
-            let bubble = document.getElementById('chat-bubble');
-            if (chatBox.style.display === 'flex') { rChat(); }
-            else if (bubble && isNew) {
-                bubble.innerHTML = '<span class="absolute top-0 right-0 w-3 h-3 bg-red-500 rounded-full animate-ping"></span><span class="absolute top-0 right-0 w-3 h-3 bg-red-500 rounded-full"></span><svg class="w-6 h-6 drop-shadow-md text-white relative z-10" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path></svg>';
+        // SECURITY FIX: Unwrapper for real-time payloads
+        const unwrap = (val) => (val && typeof val === 'object' && !Array.isArray(val) && val.data) ? val.data : val;
+
+        if (msgRes && msgRes.data && msgRes.data.data) {
+            let liveMsgs = unwrap(msgRes.data.data);
+            if (liveMsgs.length !== S.msg.length) {
+                let isNew = liveMsgs.length > S.msg.length;
+                S.msg = liveMsgs;
+                let chatBox = document.getElementById('chat-box');
+                let bubble = document.getElementById('chat-bubble');
+                if (chatBox.style.display === 'flex') { rChat(); }
+                else if (bubble && isNew) {
+                    bubble.innerHTML = '<span class="absolute top-0 right-0 w-3 h-3 bg-red-500 rounded-full animate-ping"></span><span class="absolute top-0 right-0 w-3 h-3 bg-red-500 rounded-full"></span><svg class="w-6 h-6 drop-shadow-md text-white relative z-10" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"></path></svg>';
+                }
             }
         }
 
-        if (vRes && vRes.data && JSON.stringify(vRes.data) !== JSON.stringify(S.v)) {
-            S.v = vRes.data;
-            if(document.getElementById('p-accounting').classList.contains('active')) rDisc();
+        if (vRes && vRes.data && vRes.data.data) {
+            let liveV = unwrap(vRes.data.data);
+            if (JSON.stringify(liveV) !== JSON.stringify(S.v)) {
+                S.v = liveV;
+                if(document.getElementById('p-accounting').classList.contains('active')) rDisc();
+            }
         }
-        if (prRes && prRes.data && JSON.stringify(prRes.data) !== JSON.stringify(S.pr)) {
-            S.pr = prRes.data;
-            if(document.getElementById('p-accounting').classList.contains('active') && !document.getElementById('p-catalog').classList.contains('hidden')) renderCatalog();
+        
+        if (prRes && prRes.data && prRes.data.data) {
+            let livePr = unwrap(prRes.data.data);
+            if (JSON.stringify(livePr) !== JSON.stringify(S.pr)) {
+                S.pr = livePr;
+                if(document.getElementById('p-accounting').classList.contains('active') && !document.getElementById('p-catalog').classList.contains('hidden')) renderCatalog();
+            }
         }
 
         if (needsRefresh) {
@@ -6678,7 +6982,7 @@ function printPrescriptionPad(idx) {
         }
     } catch(e) { console.error("Sync error:", e); }
 }
-        // --- SUPABASE REALTIME PROTOCOL (Zero-Lag Sync) ---
+  // --- SUPABASE REALTIME PROTOCOL (Zero-Lag Sync) ---
    function initRealtimeSync() {
     _supabase.channel('dap_realtime')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'dap_store' }, payload => { syncGlobalLive(); })
