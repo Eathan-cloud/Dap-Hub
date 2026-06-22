@@ -5929,54 +5929,62 @@ function printPrescriptionPad(idx) {
         }
 
       function rProd() {
-            let filterVal = document.getElementById('prod-filter')?.value || 'ALL';
-            let sq = document.getElementById('prod-search')?.value.toUpperCase() || '';
-            let prodHtml = '';
+    let filterVal = document.getElementById('prod-filter')?.value || 'ALL';
+    let sq = document.getElementById('prod-search')?.value.toUpperCase() || '';
+    let prodHtml = '';
 
-            S.o.slice(-100).reverse().forEach((x, i) => {
-                if (filterVal !== 'ALL' && x.st !== filterVal) return;
-               
-                // SEARCH FILTER CONDITION
-                if(sq && !x.id.includes(sq) && !(x.doc || '').toUpperCase().includes(sq) && !(x.asn || '').toUpperCase().includes(sq)) return;
+    // FIX: Map the original index before slicing and reversing the array
+    let prodData = S.o.map((x, idx) => ({ ...x, originalIdx: idx })).slice(-100).reverse();
 
-                let isActive = selectedProdIdx === i ? 'pay-row-active shadow-inner bg-slate-50' : 'cursor-pointer hover:bg-slate-50/80 transition-colors border-l-4 border-l-transparent';
-                if (selectedProdIdx === i) isActive += ' border-l-4 border-l-blue-500';
-               
-                let statusColor = 'bg-slate-100 text-slate-600 border-slate-200';
-                if(x.st === 'New' || x.st === 'NEW') statusColor = 'bg-rose-100 text-rose-700 border-rose-200';
-                if(x.st === 'In Production' || x.st === 'IN PRODUCTION') statusColor = 'bg-blue-100 text-blue-700 border-blue-200';
-                if(x.st === 'Completed' || x.st === 'Delivered') statusColor = 'bg-emerald-100 text-emerald-700 border-emerald-200';
+    prodData.forEach((x) => {
+        let origIdx = x.originalIdx;
 
-                let techOptsHtml = `<option value="">UNASSIGNED</option>` +
-                                   S.techs.map(t => `<option value="${t}" ${x.asn === t ? 'selected' : ''}>${t}</option>`).join('') +
-                                   S.u.filter(u => u.d === 'PRODUCTION' || u.d === 'STAFF').map(u => `<option value="${u.n}" ${x.asn === u.n ? 'selected' : ''}>${u.n}</option>`).join('');
+        if (filterVal !== 'ALL' && x.st !== filterVal) return;
+        
+        // SEARCH FILTER CONDITION
+        if(sq && !x.id.includes(sq) && !(x.doc || '').toUpperCase().includes(sq) && !(x.asn || '').toUpperCase().includes(sq)) return;
 
-                prodHtml += `
-                    <tr class="border-b border-slate-100 ${isActive}" onclick="selectProdRecord(${i})">
-                        <td class="font-black text-[#189ad3] py-4 px-4">${x.id}</td>
-                        <td><span class="px-3 py-1.5 rounded-lg text-[9px] font-black border tracking-widest uppercase ${statusColor}">${x.st}</span></td>
-                        <td class="font-bold text-slate-700 text-xs">${x.doc}</td>
-                        <td class="font-bold text-slate-500 text-[11px]">${x.date ? x.date.split('T')[0] : '-'}</td>
-                        <td class="font-bold text-slate-500 text-[11px]">${x.due ? x.due.split('T')[0] : '-'}</td>
-                        <td class="font-bold text-slate-500 text-[11px]">${x.comp ? x.comp.split('T')[0] : '-'}</td>
-                        <td onclick="event.stopPropagation()">
-                            <div class="flex items-center gap-1">
-                                <select id="tech-sel-${i}" class="inp !py-1 !px-2 !text-[9px] font-bold w-28 uppercase" onchange="updateTech(${i}, this.value)">
-                                    ${techOptsHtml}
-                                </select>
-                                <button onclick="addTech()" class="btn btn-blue !p-1 shadow-sm" title="Add New Tech">+</button>
-                                <button onclick="delTech(document.getElementById('tech-sel-${i}').value)" class="btn btn-red !p-1 shadow-sm" title="Delete Selected Tech">X</button>
-                            </div>
-                        </td>
-                    </tr>
-                `;
-            });
+        // FIX: Use origIdx instead of the loop index 'i'
+        let isActive = selectedProdIdx === origIdx ? 'pay-row-active shadow-inner bg-slate-50' : 'cursor-pointer hover:bg-slate-50/80 transition-colors border-l-4 border-l-transparent';
+        if (selectedProdIdx === origIdx) isActive += ' border-l-4 border-l-blue-500';
+        
+        let statusColor = 'bg-slate-100 text-slate-600 border-slate-200';
+        if(x.st === 'New' || x.st === 'NEW') statusColor = 'bg-rose-100 text-rose-700 border-rose-200';
+        if(x.st === 'In Production' || x.st === 'IN PRODUCTION') statusColor = 'bg-blue-100 text-blue-700 border-blue-200';
+        if(x.st === 'Completed' || x.st === 'Delivered') statusColor = 'bg-emerald-100 text-emerald-700 border-emerald-200';
 
-            let tbody = document.getElementById('b-prod');
-            if (tbody) tbody.innerHTML = prodHtml || `<tr><td colspan="7" class="text-center p-8 text-slate-400 font-black uppercase tracking-widest text-[10px]">NO TICKETS DETECTED FOR "${filterVal}" OR SEARCH</td></tr>`;
+        let techOptsHtml = `<option value="">UNASSIGNED</option>` +
+                           S.techs.map(t => `<option value="${t}" ${x.asn === t ? 'selected' : ''}>${t}</option>`).join('') +
+                           S.u.filter(u => u.d === 'PRODUCTION' || u.d === 'STAFF').map(u => `<option value="${u.n}" ${x.asn === u.n ? 'selected' : ''}>${u.n}</option>`).join('');
 
-            renderProdDetails();
-        }
+        prodHtml += `
+            <tr class="border-b border-slate-100 ${isActive}" onclick="selectProdRecord(${origIdx})">
+                <td class="font-black text-[#189ad3] py-4 px-4">${x.id}</td>
+                <td><span class="px-3 py-1.5 rounded-lg text-[9px] font-black border tracking-widest uppercase ${statusColor}">${x.st}</span></td>
+                <td class="font-bold text-slate-700 text-xs">${x.doc}</td>
+                <td class="font-bold text-slate-500 text-[11px]">${x.date ? x.date.split('T')[0] : '-'}</td>
+                <td class="font-bold text-slate-500 text-[11px]">${x.due ? x.due.split('T')[0] : '-'}</td>
+                <td class="font-bold text-slate-500 text-[11px]">${x.comp ? x.comp.split('T')[0] : '-'}</td>
+                <td onclick="event.stopPropagation()">
+                    <div class="flex items-center gap-1">
+                        <select id="tech-sel-${origIdx}" class="inp !py-1 !px-2 !text-[9px] font-bold w-28 uppercase" onchange="updateTech(${origIdx}, this.value)">
+                            ${techOptsHtml}
+                        </select>
+                        <button onclick="addTech()" class="btn btn-blue !p-1 shadow-sm" title="Add New Tech">+</button>
+                        <button onclick="delTech(document.getElementById('tech-sel-${origIdx}').value)" class="btn btn-red !p-1 shadow-sm" title="Delete Selected Tech">X</button>
+                    </div>
+                </td>
+            </tr>
+        `;
+    });
+
+    let tbody = document.getElementById('b-prod');
+    if (tbody) tbody.innerHTML = prodHtml || `<tr><td colspan="7" class="text-center p-8 text-slate-400 font-black uppercase tracking-widest text-[10px]">NO TICKETS DETECTED FOR "${filterVal}" OR SEARCH</td></tr>`;
+
+    renderProdDetails();
+}
+
+          
 
         function selectProdRecord(i) {
             selectedProdIdx = i;
