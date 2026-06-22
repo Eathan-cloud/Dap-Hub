@@ -2832,7 +2832,8 @@ function rPendingSI() {
             // ALREADY PRINTED - Faded styling, Green ISSUED mark, and VIEW buttons
             rowStyle = 'bg-slate-50 opacity-60 hover:opacity-100 border-slate-200 grayscale hover:grayscale-0';
             
-            let viewSiBtn = S.sys.hideSI ? '' : `<button onclick="downloadSalesInvoicePDF(${x.originalIdx})" class="btn btn-slate bg-slate-200 text-slate-700 hover:bg-slate-300 !py-1.5 !px-4 text-[9px] shadow-sm uppercase tracking-widest w-full">VIEW S.I.</button>`;
+            // FIX: Replaced missing function with printSalesInvoice
+            let viewSiBtn = S.sys.hideSI ? '' : `<button onclick="printSalesInvoice(${x.originalIdx})" class="btn btn-slate bg-slate-200 text-slate-700 hover:bg-slate-300 !py-1.5 !px-4 text-[9px] shadow-sm uppercase tracking-widest w-full">VIEW S.I.</button>`;
 
             actionButtons = `
                 <div class="text-[9px] font-black text-emerald-700 bg-emerald-100 border border-emerald-300 px-2 py-1 rounded text-center mb-2 tracking-widest">ISSUED: ${x.siNo}</div>
@@ -2869,6 +2870,8 @@ function rPendingSI() {
         `;
     }).join('') || `<tr><td colspan="12" class="text-center p-8 text-orange-700/50 font-black tracking-widest uppercase text-[10px]">No Delivery Receipts issued yet.</td></tr>`;
 }
+
+       
 function rSOA() {
     let clientFilter = document.getElementById('soa-client-filter');
     let selectedClient = clientFilter ? clientFilter.value : 'ALL';
@@ -5933,20 +5936,17 @@ function printPrescriptionPad(idx) {
     let sq = document.getElementById('prod-search')?.value.toUpperCase() || '';
     let prodHtml = '';
 
-    // FIX: Map the original index before slicing and reversing the array
-    let prodData = S.o.map((x, idx) => ({ ...x, originalIdx: idx })).slice(-100).reverse();
+    // FIX: Lock the original index memory before reversing the array
+    let prodCases = S.o.map((item, originalIdx) => ({...item, originalIdx}));
 
-    prodData.forEach((x) => {
-        let origIdx = x.originalIdx;
-
+    prodCases.slice(-100).reverse().forEach((x) => {
         if (filterVal !== 'ALL' && x.st !== filterVal) return;
         
         // SEARCH FILTER CONDITION
         if(sq && !x.id.includes(sq) && !(x.doc || '').toUpperCase().includes(sq) && !(x.asn || '').toUpperCase().includes(sq)) return;
 
-        // FIX: Use origIdx instead of the loop index 'i'
-        let isActive = selectedProdIdx === origIdx ? 'pay-row-active shadow-inner bg-slate-50' : 'cursor-pointer hover:bg-slate-50/80 transition-colors border-l-4 border-l-transparent';
-        if (selectedProdIdx === origIdx) isActive += ' border-l-4 border-l-blue-500';
+        let isActive = selectedProdIdx === x.originalIdx ? 'pay-row-active shadow-inner bg-slate-50' : 'cursor-pointer hover:bg-slate-50/80 transition-colors border-l-4 border-l-transparent';
+        if (selectedProdIdx === x.originalIdx) isActive += ' border-l-4 border-l-blue-500';
         
         let statusColor = 'bg-slate-100 text-slate-600 border-slate-200';
         if(x.st === 'New' || x.st === 'NEW') statusColor = 'bg-rose-100 text-rose-700 border-rose-200';
@@ -5958,7 +5958,7 @@ function printPrescriptionPad(idx) {
                            S.u.filter(u => u.d === 'PRODUCTION' || u.d === 'STAFF').map(u => `<option value="${u.n}" ${x.asn === u.n ? 'selected' : ''}>${u.n}</option>`).join('');
 
         prodHtml += `
-            <tr class="border-b border-slate-100 ${isActive}" onclick="selectProdRecord(${origIdx})">
+            <tr class="border-b border-slate-100 ${isActive}" onclick="selectProdRecord(${x.originalIdx})">
                 <td class="font-black text-[#189ad3] py-4 px-4">${x.id}</td>
                 <td><span class="px-3 py-1.5 rounded-lg text-[9px] font-black border tracking-widest uppercase ${statusColor}">${x.st}</span></td>
                 <td class="font-bold text-slate-700 text-xs">${x.doc}</td>
@@ -5967,11 +5967,11 @@ function printPrescriptionPad(idx) {
                 <td class="font-bold text-slate-500 text-[11px]">${x.comp ? x.comp.split('T')[0] : '-'}</td>
                 <td onclick="event.stopPropagation()">
                     <div class="flex items-center gap-1">
-                        <select id="tech-sel-${origIdx}" class="inp !py-1 !px-2 !text-[9px] font-bold w-28 uppercase" onchange="updateTech(${origIdx}, this.value)">
+                        <select id="tech-sel-${x.originalIdx}" class="inp !py-1 !px-2 !text-[9px] font-bold w-28 uppercase" onchange="updateTech(${x.originalIdx}, this.value)">
                             ${techOptsHtml}
                         </select>
                         <button onclick="addTech()" class="btn btn-blue !p-1 shadow-sm" title="Add New Tech">+</button>
-                        <button onclick="delTech(document.getElementById('tech-sel-${origIdx}').value)" class="btn btn-red !p-1 shadow-sm" title="Delete Selected Tech">X</button>
+                        <button onclick="delTech(document.getElementById('tech-sel-${x.originalIdx}').value)" class="btn btn-red !p-1 shadow-sm" title="Delete Selected Tech">X</button>
                     </div>
                 </td>
             </tr>
@@ -5983,6 +5983,7 @@ function printPrescriptionPad(idx) {
 
     renderProdDetails();
 }
+
 
           
 
