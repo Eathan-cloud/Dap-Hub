@@ -490,7 +490,6 @@
             <th class="!text-[10px] border border-yellow-500 !bg-yellow-400 !text-black">Payment Reference</th>
             <th class="!text-[10px] border border-yellow-500 !bg-yellow-400 !text-black text-right">Balance</th>
             <th class="!text-[10px] border border-yellow-500 !bg-yellow-400 !text-black">Status</th>
-            <th class="!text-[10px] border border-yellow-500 !bg-yellow-400 !text-black text-center">Action</th>
         </tr>
     </thead>
     <tbody id="b-soa-list"></tbody>
@@ -832,6 +831,24 @@
                             <input type="checkbox" id="admin-mods-toggle" class="w-5 h-5 rounded text-purple-500 focus:ring-purple-500 bg-blue-900/50 border-blue-700" onchange="toggleAdminManage('mods', this.checked)">
                             Grant [ADMIN] clearance to provision restricted/custom modules
                         </label>
+
+                        <hr class="border-[#189ad3] my-5 opacity-50">
+                        <h4 class="text-[#189ad3] font-black uppercase tracking-widest text-[10px] mb-3">Global Interface Overrides (Hides button for ALL users)</h4>
+                        
+                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                            <label class="flex items-center gap-3 font-bold text-xs cursor-pointer text-rose-200 hover:text-white transition-colors bg-[#001f2d] p-3 rounded-xl border border-blue-800/50">
+                                <input type="checkbox" id="hide-rx-toggle" class="w-4 h-4 rounded text-rose-500 bg-blue-900/50 border-blue-700" onchange="toggleSysButton('hideRx', this.checked)">
+                                HIDE "Prescription Pad"
+                            </label>
+                            <label class="flex items-center gap-3 font-bold text-xs cursor-pointer text-orange-200 hover:text-white transition-colors bg-[#001f2d] p-3 rounded-xl border border-blue-800/50">
+                                <input type="checkbox" id="hide-stub-toggle" class="w-4 h-4 rounded text-orange-500 bg-blue-900/50 border-blue-700" onchange="toggleSysButton('hideStub', this.checked)">
+                                HIDE "Print Stub"
+                            </label>
+                            <label class="flex items-center gap-3 font-bold text-xs cursor-pointer text-emerald-200 hover:text-white transition-colors bg-[#001f2d] p-3 rounded-xl border border-blue-800/50">
+                                <input type="checkbox" id="hide-si-toggle" class="w-4 h-4 rounded text-emerald-500 bg-blue-900/50 border-blue-700" onchange="toggleSysButton('hideSI', this.checked)">
+                                HIDE "Sales Invoice"
+                            </label>
+                        </div>
                     </div>
 
                     <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
@@ -2785,28 +2802,55 @@ function rPendingSI() {
     let tbody = document.getElementById('b-pending-si');
     if (!tbody) return;
 
-    // Find cases where DR (receiptNo) exists but SI (siNo) does not
-    let pendingCases = S.o.map((x, i) => ({...x, originalIdx: i}))
-        .filter(x => x.st !== 'VOID' && x.st !== 'CANCELLED' && x.receiptNo && !x.siNo);
+    // 1. Fetch ALL cases that have a DR, regardless of whether they have an SI or not
+    let drIssuedCases = S.o.map((x, i) => ({...x, originalIdx: i}))
+        .filter(x => x.st !== 'VOID' && x.st !== 'CANCELLED' && x.receiptNo);
 
-    tbody.innerHTML = pendingCases.map(x => {
-        // Fetch specific client info
+    // 2. Sort them: Pending S.I. at the top, Already Issued S.I. at the bottom
+    drIssuedCases.sort((a, b) => {
+        if (a.siNo && !b.siNo) return 1;
+        if (!a.siNo && b.siNo) return -1;
+        return 0;
+    });
+
+    tbody.innerHTML = drIssuedCases.map(x => {
         let docObj = S.d.find(d => d.n === x.doc) || {};
         let addr = docObj.addr || '-';
         let tin = docObj.tin || '-';
         let po = x.poNo || '-';
-        
         let orderDate = x.date ? x.date.split('T')[0] : '-';
-        
         let qty = x.qty || 1;
         let unit = 'PCS';
-        
-        // Correctly mapped data
         let products = (x.prods||[]).join(', ') || '-';
         let particulars = x.rem || '-';
 
+        // 3. Logic to determine if it's PENDING or ALREADY ISSUED
+        let actionButtons = '';
+        let rowStyle = 'hover:bg-orange-50/50 border-orange-100';
+
+        if (x.siNo) {
+            // ALREADY PRINTED - Faded styling, Green ISSUED mark, and VIEW buttons
+            rowStyle = 'bg-slate-50 opacity-60 hover:opacity-100 border-slate-200 grayscale hover:grayscale-0';
+            
+            let viewSiBtn = S.sys.hideSI ? '' : `<button onclick="downloadSalesInvoicePDF(${x.originalIdx})" class="btn btn-slate bg-slate-200 text-slate-700 hover:bg-slate-300 !py-1.5 !px-4 text-[9px] shadow-sm uppercase tracking-widest w-full">VIEW S.I.</button>`;
+
+            actionButtons = `
+                <div class="text-[9px] font-black text-emerald-700 bg-emerald-100 border border-emerald-300 px-2 py-1 rounded text-center mb-2 tracking-widest">ISSUED: ${x.siNo}</div>
+                <button onclick="autoPrintDR(${x.originalIdx})" class="btn btn-slate bg-slate-200 text-slate-700 hover:bg-slate-300 !py-1.5 !px-4 text-[9px] shadow-sm uppercase tracking-widest w-full mb-1">VIEW D.R.</button>
+                ${viewSiBtn}
+            `;
+        } else {
+            // PENDING - Normal active styling and main Action buttons
+            let genSiBtn = S.sys.hideSI ? '' : `<button onclick="printSalesInvoice(${x.originalIdx})" class="btn btn-blue !py-2 !px-4 text-[10px] shadow-md uppercase tracking-widest w-full">SALES INVOICE</button>`;
+
+            actionButtons = `
+                <button onclick="autoPrintDR(${x.originalIdx})" class="btn btn-orange !py-2 !px-4 text-[10px] shadow-md uppercase tracking-widest w-full mb-2">PRINT D.R.</button>
+                ${genSiBtn}
+            `;
+        }
+
         return `
-        <tr class="hover:bg-orange-50/50 transition-colors border-b border-orange-100">
+        <tr class="transition-all border-b ${rowStyle}">
             <td class="font-black text-orange-700 p-3 text-sm align-top">${x.receiptNo}</td>
             <td class="font-bold text-slate-500 p-3 text-[11px] align-top whitespace-nowrap">${orderDate}</td>
             <td class="font-bold text-slate-700 p-3 text-xs align-top">${x.id}</td>
@@ -2818,13 +2862,13 @@ function rPendingSI() {
             <td class="font-bold text-slate-600 p-3 text-[10px] text-center align-top">${unit}</td>
             <td class="font-bold text-slate-600 p-3 text-[10px] align-top max-w-[150px] whitespace-pre-wrap">${products}</td>
             <td class="font-bold text-slate-600 p-3 text-[10px] align-top max-w-[200px] whitespace-pre-wrap">${particulars}</td>
-            <td class="p-3 text-center align-top">
-                <button onclick="autoPrintDR(${x.originalIdx})" class="btn btn-blue !py-2 !px-4 text-[10px] shadow-md uppercase tracking-widest w-full">PRINT D.R.</button>
+            <td class="p-3 text-center align-top flex flex-col justify-center">
+                ${actionButtons}
             </td>
         </tr>
         `;
-    }).join('') || `<tr><td colspan="12" class="text-center p-8 text-orange-700/50 font-black tracking-widest uppercase text-[10px]">No pending Delivery Receipts awaiting Invoice.</td></tr>`;
-}  
+    }).join('') || `<tr><td colspan="12" class="text-center p-8 text-orange-700/50 font-black tracking-widest uppercase text-[10px]">No Delivery Receipts issued yet.</td></tr>`;
+}
 function rSOA() {
     let clientFilter = document.getElementById('soa-client-filter');
     let selectedClient = clientFilter ? clientFilter.value : 'ALL';
@@ -2838,19 +2882,12 @@ function rSOA() {
     }
 
     let cases = S.o.filter(x => x.st !== 'VOID' && x.st !== 'CANCELLED');
-    
-    if (selectedMonth !== 'ALL') {
-        cases = cases.filter(x => x.date && x.date.startsWith(selectedMonth));
-    }
-    if (selectedClient !== 'ALL') {
-        cases = cases.filter(x => x.doc === selectedClient);
-    }
-
+    if (selectedMonth !== 'ALL') cases = cases.filter(x => x.date && x.date.startsWith(selectedMonth));
+    if (selectedClient !== 'ALL') cases = cases.filter(x => x.doc === selectedClient);
     cases.sort((a,b) => new Date(a.date || 0) - new Date(b.date || 0));
 
     let tbody = document.getElementById('b-soa-list');
     let tfoot = document.getElementById('b-soa-footer');
-    
     let sumTot = 0, sumPaid = 0, sumBal = 0;
 
     let rows = cases.map(x => {
@@ -2882,12 +2919,11 @@ function rSOA() {
                 <td class="p-1 border"><input type="text" class="inp !py-1 !px-2 text-[10px] font-bold w-full text-red-600 bg-transparent" value="${x.paySi || ''}" onchange="updateSOAField(${originalIdx}, 'paySi', this.value)" placeholder="Ref..."></td>
                 <td class="font-black text-rose-600 p-2 text-right border">₱${bal.toLocaleString()}</td>
                 <td class="p-1 border"><input type="text" class="inp !py-1 !px-2 text-[10px] font-bold w-full bg-transparent" value="${x.soaStatus || ''}" onchange="updateSOAField(${originalIdx}, 'soaStatus', this.value)" placeholder="Status"></td>
-                <td class="p-2 border text-center"><button onclick="printSalesInvoice(${originalIdx})" class="btn btn-blue !py-1 !px-2 text-[8px] shadow-sm tracking-widest">SALES INVOICE</button></td>
             </tr>
         `;
     }).join('');
 
-    if (tbody) tbody.innerHTML = rows || `<tr><td colspan="13" class="text-center p-8 text-slate-400 font-black tracking-widest uppercase text-[10px]">No invoices found for the selected period/client.</td></tr>`;
+    if (tbody) tbody.innerHTML = rows || `<tr><td colspan="12" class="text-center p-8 text-slate-400 font-black tracking-widest uppercase text-[10px]">No invoices found for the selected period/client.</td></tr>`;
     
     if (tfoot) {
         tfoot.innerHTML = `
@@ -2896,12 +2932,12 @@ function rSOA() {
                 <td class="font-black text-slate-800 p-4 text-right">₱${sumTot.toLocaleString()}</td>
                 <td></td><td></td>
                 <td class="font-black text-rose-700 p-4 text-right">₱${sumBal.toLocaleString()}</td>
-                <td colspan="2"></td>
+                <td></td>
             </tr>
         `;
     }
 }
-        
+
 
 function printSOA() {
     let client = document.getElementById('soa-client-filter').value;
@@ -3206,40 +3242,76 @@ function autoPrintDR(idx) {
     // Save exactly without inputs
     doc.save(`Delivery_Receipt_${o.id}.pdf`);
 }
-function printSalesInvoice(idx) {
+// Auto Number-to-Words Converter for Automating SI amounts
+function amountToWords(amount) {
+    if (amount === 0) return ''; // <--- BINAGO: Kung 0, ibalik ay blangko.
+    const a = ['','ONE ','TWO ','THREE ','FOUR ', 'FIVE ','SIX ','SEVEN ','EIGHT ','NINE ','TEN ','ELEVEN ','TWELVE ','THIRTEEN ','FOURTEEN ','FIFTEEN ','SIXTEEN ','SEVENTEEN ','EIGHTEEN ','NINETEEN '];
+    const b = ['', '', 'TWENTY','THIRTY','FORTY','FIFTY', 'SIXTY','SEVENTY','EIGHTY','NINETY'];
+    const format = (n) => {
+        if (n < 20) return a[n];
+        let y = Math.floor(n / 10);
+        let z = n % 10;
+        return b[y] + (z ? '-' + a[z] : ' ');
+    };
+    let num = Math.floor(amount);
+    let cents = Math.round((amount - num) * 100);
+    let res = '';
+    if (num >= 1000000) { res += format(Math.floor(num / 1000000)) + 'MILLION '; num %= 1000000; }
+    if (num >= 1000) {
+        let thousands = Math.floor(num / 1000);
+        if (thousands >= 100) { res += a[Math.floor(thousands / 100)] + 'HUNDRED '; thousands %= 100; }
+        if (thousands > 0) res += format(thousands);
+        res += 'THOUSAND ';
+        num %= 1000;
+    }
+    if (num >= 100) { res += a[Math.floor(num / 100)] + 'HUNDRED '; num %= 100; }
+    if (num > 0) res += format(num);
+    let finalStr = res.trim() + " PESOS";
+    if (cents > 0) finalStr += " AND " + cents + "/100";
+    return finalStr + " ONLY";
+}
+
+// 1-CLICK DIRECT TO PDF SALES INVOICE
+async function printSalesInvoice(idx) {
     let o = S.o[idx];
     if (!o) { alert("Error: Cannot find case data."); return; }
 
-    document.getElementById('si-idx').value = idx;
-    document.getElementById('si-no').value = o.siNo || ''; 
+    // 1. Auto-generate SI Number
+    if (!S.sys.lastSiNo) S.sys.lastSiNo = 1000;
+    let nextSiNo = S.sys.lastSiNo + 1;
+    let invoiceNo = o.siNo || String(nextSiNo);
+
+    // 2. Auto-fetch all Client and DR Data
+    let docObj = S.d.find(d => d.n === o.doc) || {};
+    let regName = o.doc || "UNKNOWN CLIENT";
+    let tin = docObj.tin || "N/A";
+    let addr = docObj.addr || "N/A";
     
-    let docObj = S.d.find(d => d.n === o.doc);
-    document.getElementById('si-reg-name').value = o.doc || "";
-    document.getElementById('si-tin').value = docObj && docObj.tin ? docObj.tin : "";
-    document.getElementById('si-addr').value = docObj && docObj.addr ? docObj.addr : "";
-    document.getElementById('si-amount-text').value = "";
-    document.getElementById('si-amount-override').value = o.siAmountOverride || ""; // Load existing override if any
+    // 3. Auto-compute exact totals
+    let rawTot = parseFloat(String(o.tot).replace(/,/g, '')) || 0;
+    let paidAmt = o.amtPaid || 0; 
+    
+    // Per your request: ALWAYS use NUMBERS instead of text/words
+    let amountText = rawTot.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
+    
+    // 4. Save SI Data to Cloud & System Memory instantly
+    o.siNo = invoiceNo;
+    o.siAmountText = amountText;
+    o.siAmountOverride = rawTot; 
 
-    document.getElementById('mod-sales-invoice').classList.add('active');
-}
-
-function execSalesInvoicePrint() {
-    let idx = document.getElementById('si-idx').value;
-    let o = S.o[idx];
-    if (!o) return;
-
-    let invoiceNo = document.getElementById('si-no').value.trim();
-    let saleType = document.querySelector('input[name="si-type"]:checked').value;
-    let regName = document.getElementById('si-reg-name').value.trim();
-    let tin = document.getElementById('si-tin').value.trim();
-    let addr = document.getElementById('si-addr').value.trim();
-    let amountText = document.getElementById('si-amount-text').value.trim();
-
-    // Validation Check
-    if (!invoiceNo || !regName || !tin || !addr || !amountText) {
-        return alert("Please complete all fields before printing the Sales Invoice.");
+    let parsedSiNo = parseInt(invoiceNo.replace(/[^0-9]/g, ''));
+    if (!isNaN(parsedSiNo)) {
+        if (parsedSiNo >= nextSiNo) {
+            S.sys.lastSiNo = parsedSiNo;
+        }
     }
+    
+    // Sync to database to instantly remove from pending list
+    await sv('o');
+    await sv('sys');
+    rPendingSI(); 
 
+    // 5. Generate and Download PDF Instantly
     try {
         const { jsPDF } = window.jspdf;
         let doc = new jsPDF({ format: 'a4', unit: 'mm' });
@@ -3263,11 +3335,16 @@ function execSalesInvoicePrint() {
         doc.text("No.   " + invoiceNo, 160, 35);
         doc.setTextColor(0, 0, 0);
 
-        // CHECKBOXES
+        // ---------------------------------------------------------
+        // AUTO-DETECT CASH OR CHARGE SALES
+        // ---------------------------------------------------------
+        let isChargeSales = paidAmt < rawTot; // Kung kulang ang bayad, Charge Sales.
+
         doc.setLineWidth(0.3);
+        
+        // CASH SALES CHECKBOX
         doc.rect(15, 40, 3, 3);
-        if(saleType === 'CASH SALES') { 
-            // Draw a checkmark using lines to prevent font encoding issues
+        if (!isChargeSales) {
             doc.line(15.5, 41.5, 16.5, 42.5); 
             doc.line(16.5, 42.5, 18.5, 39.5); 
         }
@@ -3275,26 +3352,26 @@ function execSalesInvoicePrint() {
         doc.setFont("helvetica", "normal");
         doc.text("CASH SALES", 20, 42.5);
 
+        // CHARGE SALES CHECKBOX
         doc.rect(40, 40, 3, 3);
-        if(saleType === 'CHARGE SALES') { 
-            // Draw a checkmark using lines
+        if (isChargeSales) {
             doc.line(40.5, 41.5, 41.5, 42.5); 
             doc.line(41.5, 42.5, 43.5, 39.5); 
         }
         doc.setFont("helvetica", "normal");
         doc.text("CHARGE SALES", 45, 42.5);
+        // ---------------------------------------------------------
 
         // INFO BOX
         doc.rect(15, 45, 180, 20);
         doc.line(15, 51.6, 195, 51.6);
         doc.line(15, 58.3, 195, 58.3);
         
-        // Split for Date
         doc.line(140, 45, 140, 51.6); 
         doc.line(160, 45, 160, 51.6);
 
         doc.text("SOLD TO: ", 17, 49);
-        doc.text(o.doc || "", 45, 49);
+        doc.text(regName, 45, 49);
         doc.text("DATE", 145, 49);
         doc.text(o.date ? o.date.split('T')[0] : "", 165, 49);
 
@@ -3309,15 +3386,12 @@ function execSalesInvoicePrint() {
         let startY = 75;
         doc.rect(15, startY, 180, 140);
         
-        // Vertical columns
         doc.line(110, startY, 110, startY + 140); 
         doc.line(135, startY, 135, startY + 140); 
         doc.line(165, startY, 165, startY + 140); 
         
-        // Header Line
         doc.line(15, startY + 7, 195, startY + 7);
         
-        // Horizontal Lines for Body
         for(let j = startY + 14; j < startY + 140; j += 7){
             doc.line(15, j, 195, j);
         }
@@ -3328,21 +3402,17 @@ function execSalesInvoicePrint() {
         doc.text("UNIT PRICE", 150, startY + 5, {align: 'center'});
         doc.text("AMOUNT", 180, startY + 5, {align: 'center'});
 
-        // TABLE DATA
+        // TABLE DATA & CALCULATIONS
         doc.setFont("helvetica", "normal");
         let contentY = startY + 12;
         let prods = o.prods || [];
         
-        let overrideAmt = document.getElementById('si-amount-override').value.trim();
-        let manualTotal = overrideAmt !== "" ? parseFloat(overrideAmt) : null;
-        let totCostNum = manualTotal !== null ? manualTotal : (parseFloat(String(o.tot).replace(/,/g, '')) || 0);
-
-        // Distribute the manual total across items roughly to make the PDF math work
-        let customUnitCost = manualTotal !== null ? (manualTotal / (prods.length || 1)) : null;
+        let totCostNum = rawTot;
+        let customUnitCost = prods.length > 0 ? (rawTot / prods.length) : rawTot;
 
         for(let p of prods) {
             let itemQty = parseInt((o.pQtys && o.pQtys[p]) ? o.pQtys[p] : (o.qty || 1)) || 0;
-            let pCost = customUnitCost !== null ? (customUnitCost / (itemQty || 1)) : (S.pr[p] || 1500);
+            let pCost = customUnitCost / (itemQty || 1);
             let pTotal = itemQty * pCost;
 
             doc.text(`${p} for ${o.pat}`, 17, contentY);
@@ -3356,17 +3426,13 @@ function execSalesInvoicePrint() {
         // SUMMARY BOXES AT BOTTOM
         let sumY = startY + 140; 
         
-        // --- 1. PERFORM COMPUTATIONS ---
         let totalSalesVatInc = totCostNum;
         let vatableSales = totalSalesVatInc / 1.12;
         let vatAmount = totalSalesVatInc - vatableSales;
-        let scPwdDiscount = 0; // Keep as 0 unless you have a specific field for this
-        
+        let scPwdDiscount = 0; 
         let addVat = vatAmount; 
         let totalAmountDue = (vatableSales - scPwdDiscount) + addVat;
-        // -------------------------------
         
-        // Left Summary Box
         doc.rect(15, sumY, 80, 24);
         doc.line(15, sumY + 6, 95, sumY + 6);
         doc.line(15, sumY + 12, 95, sumY + 12);
@@ -3380,14 +3446,12 @@ function execSalesInvoicePrint() {
         doc.text("ZERO-RATED SALES", 53, sumY + 16.5, {align: 'right'});
         doc.text("VAT-EXEMPT SALES", 53, sumY + 22.5, {align: 'right'});
 
-        // Left Summary Box Values
         doc.setFont("helvetica", "normal");
         doc.text(vatableSales.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2}), 93, sumY + 4.5, {align: 'right'});
         doc.text(vatAmount.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2}), 93, sumY + 10.5, {align: 'right'});
         doc.text("0.00", 93, sumY + 16.5, {align: 'right'});
         doc.text("0.00", 93, sumY + 22.5, {align: 'right'});
 
-        // Right Summary Box
         doc.rect(110, sumY, 85, 36); 
         for(let k = sumY + 6; k < sumY + 36; k += 6){
             doc.line(110, k, 195, k);
@@ -3402,7 +3466,6 @@ function execSalesInvoicePrint() {
         doc.text("ADD: VAT", 163, sumY + 28, {align: 'right'});
         doc.text("TOTAL AMOUNT DUE", 163, sumY + 34, {align: 'right'});
         
-        // Right Summary Box Computed Values
         doc.setFontSize(8);
         doc.text(totalSalesVatInc.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2}), 193, sumY + 4, {align: 'right'});
         doc.text(vatAmount.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2}), 193, sumY + 10, {align: 'right'});
@@ -3411,7 +3474,6 @@ function execSalesInvoicePrint() {
         doc.text(addVat.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2}), 193, sumY + 28, {align: 'right'});
         doc.text(totalAmountDue.toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2}), 193, sumY + 34, {align: 'right'});
 
-        // SC/PWD Section Below Right Summary Box
         doc.rect(110, sumY + 38, 85, 12);
         doc.line(110, sumY + 44, 195, sumY + 44);
         doc.line(165, sumY + 38, 165, sumY + 50); 
@@ -3422,14 +3484,19 @@ function execSalesInvoicePrint() {
 
         // RECEIVED AMOUNT SECTION
         doc.setFontSize(8);
-        doc.rect(38, sumY + 31, 3, 3); // Checkbox
+        
+        // Always draw the checkbox and put a checkmark inside it
+        doc.rect(38, sumY + 31, 3, 3);
+        // FIX: Added 'sumY +' so the checkmark stays inside the box!
+        doc.line(38.5, sumY + 32.5, 39.5, sumY + 33.5); 
+        doc.line(39.5, sumY + 33.5, 41.5, sumY + 30.5); 
+        
         doc.text("RECEIVED THE AMOUNT OF", 43, sumY + 33.5);
         
-        doc.setFontSize(9);
-        doc.text(amountText.toUpperCase(), 52.5, sumY + 46, { align: "center" });
-        doc.line(15, sumY + 48, 90, sumY + 48); // Underline
-
-        // FOOTER INFO
+        doc.setFontSize(10);
+        // Add "PHP " in front of the numbers so it looks clean on the line
+        doc.text("PHP " + amountText, 52.5, sumY + 46, { align: "center" });
+        doc.line(15, sumY + 48, 90, sumY + 48);
         let footY = sumY + 54;
         
         doc.setFontSize(6.5);
@@ -3459,14 +3526,12 @@ function execSalesInvoicePrint() {
         doc.text("Expiration Date:      09-08-2030", 110, footY + 15);
 
         doc.save(`Sales_Invoice_${o.id}.pdf`);
-        closeModals();
 
     } catch (error) {
         console.error("PDF Generation Error:", error);
         alert("SYSTEM ERROR: Failed to generate PDF. " + error.message);
     }
 }
-
         function viewRelatedPayments(idx) {
             currentPayCaseIdx = idx;
             let tbody = document.getElementById('b-payments');
@@ -3882,126 +3947,138 @@ function rOrd() {
 }
 
         function showCaseDetails(idx) {
-            selectedClinicSupportIdx = idx;
-            let x = S.o[idx];
-            if (!x) return;
+    selectedClinicSupportIdx = idx;
+    let x = S.o[idx];
+    if (!x) return;
 
-            document.querySelectorAll('#cs-case-list tr').forEach(tr => tr.classList.remove('bg-blue-50/80', 'border-l-blue-500', 'shadow-inner'));
-            document.querySelectorAll('#cs-completed-list tr').forEach(tr => tr.classList.remove('bg-emerald-50', 'border-l-emerald-500', 'shadow-inner'));
-           
-            let targetRow1 = document.querySelector(`#cs-case-list tr[onclick="showCaseDetails(${idx})"]`);
-            if (targetRow1) targetRow1.classList.add('bg-blue-50/80', 'border-l-blue-500', 'shadow-inner');
-           
-            let targetRow2 = document.querySelector(`#cs-completed-list tr[onclick="showCaseDetails(${idx})"]`);
-            if (targetRow2) targetRow2.classList.add('bg-emerald-50', 'border-l-emerald-500', 'shadow-inner');
+    document.querySelectorAll('#cs-case-list tr').forEach(tr => tr.classList.remove('bg-blue-50/80', 'border-l-blue-500', 'shadow-inner'));
+    document.querySelectorAll('#cs-completed-list tr').forEach(tr => tr.classList.remove('bg-emerald-50', 'border-l-emerald-500', 'shadow-inner'));
+    
+    let targetRow1 = document.querySelector(`#cs-case-list tr[onclick="showCaseDetails(${idx})"]`);
+    if (targetRow1) targetRow1.classList.add('bg-blue-50/80', 'border-l-blue-500', 'shadow-inner');
+    
+    let targetRow2 = document.querySelector(`#cs-completed-list tr[onclick="showCaseDetails(${idx})"]`);
+    if (targetRow2) targetRow2.classList.add('bg-emerald-50', 'border-l-emerald-500', 'shadow-inner');
 
-            let pane = document.getElementById('cs-details-pane');
-            let actions = document.getElementById('cs-action-btns');
-            if(!pane || !actions) return;
-           
-            let costPerUnit = (x.prods && x.prods.length > 0) ? (S.pr[x.prods[0]] || 0) : 0;
-            let qty = x.qty || 1;
-            let baseCost = costPerUnit * qty;
-            let discountAmt = 0;
-            if (x.v && x.v !== 'NONE') {
-                let vch = S.v.find(v => v.c === x.v);
-                if (vch) discountAmt = baseCost * (vch.p / 100);
-            }
+    let pane = document.getElementById('cs-details-pane');
+    let actions = document.getElementById('cs-action-btns');
+    if(!pane || !actions) return;
+    
+    let costPerUnit = (x.prods && x.prods.length > 0) ? (S.pr[x.prods[0]] || 0) : 0;
+    let qty = x.qty || 1;
+    let baseCost = costPerUnit * qty;
+    let discountAmt = 0;
+    if (x.v && x.v !== 'NONE') {
+        let vch = S.v.find(v => v.c === x.v);
+        if (vch) discountAmt = baseCost * (vch.p / 100);
+    }
 
-            let totCostNum = parseFloat(String(x.tot).replace(/,/g, '')) || 0;
-            let amtPaid = x.amtPaid || 0;
-            let bal = totCostNum - amtPaid; //
-            let pStat = x.manualPayStatus || (bal <= 0 ? 'FULLY PAID' : (amtPaid > 0 ? 'PARTIAL PAYMENT' : 'UNPAID'));
-           
-            let docObj = S.d.find(d => d.n === x.doc);
-            let docAddress = docObj ? docObj.addr : '';
-           let prodsListHtml = (x.prods||[]).map(p => {
-                let pQty = (x.pQtys && x.pQtys[p]) ? x.pQtys[p] : (x.qty || 1);
-                let pCost = S.pr[p] || 1500;
-               
-                // NEW: Search for a specific shade for this product, or fall back to 'ALL'
-                let specificShade = (x.shadeArr || []).find(s => s.target === p);
-                let allShade = (x.shadeArr || []).find(s => s.target === 'ALL');
-                let displayShade = specificShade ? specificShade.val : (allShade ? allShade.val : 'N/A');
+    let totCostNum = parseFloat(String(x.tot).replace(/,/g, '')) || 0;
+    let amtPaid = x.amtPaid || 0;
+    let bal = totCostNum - amtPaid; 
+    let pStat = x.manualPayStatus || (bal <= 0 ? 'FULLY PAID' : (amtPaid > 0 ? 'PARTIAL PAYMENT' : 'UNPAID'));
+    
+    let docObj = S.d.find(d => d.n === x.doc);
+    let docAddress = docObj ? docObj.addr : '';
+    let prodsListHtml = (x.prods||[]).map(p => {
+        let pQty = (x.pQtys && x.pQtys[p]) ? x.pQtys[p] : (x.qty || 1);
+        let pCost = S.pr[p] || 1500;
+        
+        let specificShade = (x.shadeArr || []).find(s => s.target === p);
+        let allShade = (x.shadeArr || []).find(s => s.target === 'ALL');
+        let displayShade = specificShade ? specificShade.val : (allShade ? allShade.val : 'N/A');
 
-                return `<div class="flex flex-col w-full text-[11px] font-bold border-b border-dashed border-slate-200 pb-2 mb-2 last:border-0 last:pb-0 last:mb-0">
-                            <div class="flex justify-between w-full">
-                                <span class="text-slate-600">${p} <span class="text-blue-500 ml-1">(x${pQty})</span></span>
-                                <span class="text-emerald-600">₱${(pCost * pQty).toLocaleString()}</span>
-                            </div>
-                            <span class="text-[9px] text-slate-400 mt-1 uppercase tracking-widest">SHADE: <span class="text-slate-700">${displayShade}</span></span>
-                        </div>`;
-            }).join('');
-            pane.innerHTML = `
-                <div class="flex flex-col max-w-full mx-auto pb-10 bg-white">
-                    <div class="relative h-48 border border-slate-200 rounded-t-lg overflow-hidden bg-slate-100 mb-4">
-                        <iframe width="100%" height="100%" frameborder="0" src="https://maps.google.com/maps?q=${encodeURIComponent(docAddress)}&output=embed"></iframe>
-                        <div class="absolute bottom-4 left-4 bg-white p-3 rounded shadow flex flex-col items-center border border-slate-200">
-                            <span class="font-black text-xl text-slate-800">${x.id}</span>
-                            <span class="text-[10px] font-bold text-blue-600 bg-blue-50 uppercase px-2 py-1 rounded mt-1">${x.st}</span>
+        return `<div class="flex flex-col w-full text-[11px] font-bold border-b border-dashed border-slate-200 pb-2 mb-2 last:border-0 last:pb-0 last:mb-0">
+                    <div class="flex justify-between w-full">
+                        <span class="text-slate-600">${p} <span class="text-blue-500 ml-1">(x${pQty})</span></span>
+                        <span class="text-emerald-600">₱${(pCost * pQty).toLocaleString()}</span>
+                    </div>
+                    <span class="text-[9px] text-slate-400 mt-1 uppercase tracking-widest">SHADE: <span class="text-slate-700">${displayShade}</span></span>
+                </div>`;
+    }).join('');
+    pane.innerHTML = `
+        <div class="flex flex-col max-w-full mx-auto pb-10 bg-white">
+            <div class="relative h-48 border border-slate-200 rounded-t-lg overflow-hidden bg-slate-100 mb-4">
+                <iframe width="100%" height="100%" frameborder="0" src="https://maps.google.com/maps?q=${encodeURIComponent(docAddress)}&output=embed"></iframe>
+                <div class="absolute bottom-4 left-4 bg-white p-3 rounded shadow flex flex-col items-center border border-slate-200">
+                    <span class="font-black text-xl text-slate-800">${x.id}</span>
+                    <span class="text-[10px] font-bold text-blue-600 bg-blue-50 uppercase px-2 py-1 rounded mt-1">${x.st}</span>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <div class="flex flex-col gap-0 border border-slate-200 rounded">
+                    <div class="flex border-b border-slate-200">
+                        <div class="w-1/3 bg-[#001f2d] text-white text-xs font-bold p-3 uppercase">PATIENT NAME</div>
+                        <div class="w-2/3 p-3 text-sm font-bold">${x.pat}</div>
+                    </div>
+                    <div class="flex border-b border-slate-200">
+                        <div class="w-1/3 bg-[#001f2d] text-white text-xs font-bold p-3 uppercase">DENTIST NAME</div>
+                        <div class="w-2/3 p-3 text-sm font-bold">${x.doc || '-'}</div>
+                    </div>
+                    <div class="flex border-b border-slate-200">
+                        <div class="w-1/3 bg-[#001f2d] text-white text-xs font-bold p-3 uppercase">RECEIVED DATE</div>
+                        <div class="w-2/3 p-3 text-sm font-bold">${x.date ? x.date.split('T')[0] : '-'}</div>
+                    </div>
+                    <div class="flex">
+                        <div class="w-1/3 bg-[#001f2d] text-white text-xs font-bold p-3 uppercase">TARGET DELIVERY DATE</div>
+                        <div class="w-2/3 p-3 text-sm font-bold">${x.due ? x.due.split('T')[0] : '-'}</div>
+                    </div>
+                </div>
+
+                <div class="flex flex-col gap-4">
+                    <div class="flex flex-col gap-0 border border-slate-200 rounded">
+                        <div class="p-2 border-b border-slate-200 bg-slate-50 text-[10px] font-bold uppercase">COST DETAILS</div>
+                        <div class="flex border-b border-slate-200">
+                            <div class="w-1/3 bg-[#001f2d] text-white text-xs font-bold p-3 uppercase">PRODUCTS</div>
+                            <div class="w-2/3 p-3 flex flex-col justify-center">${prodsListHtml}</div>
+                        </div>
+                        <div class="flex border-b border-slate-200">
+                            <div class="w-1/3 bg-[#001f2d] text-white text-xs font-bold p-3 uppercase">TOTAL COST</div>
+                            <div class="w-2/3 p-3 text-lg font-black text-blue-700">₱${x.tot}</div>
+                        </div>
+                        <div class="flex">
+                            <div class="w-1/3 bg-[#001f2d] text-white text-xs font-bold p-3 uppercase">PAYMENT STATUS</div>
+                            <div class="w-2/3 p-3 text-sm font-bold"><span class="bg-slate-100 border border-slate-200 px-2 py-1 rounded text-[10px] uppercase">${pStat}</span></div>
                         </div>
                     </div>
-
-                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                        <div class="flex flex-col gap-0 border border-slate-200 rounded">
-                            <div class="flex border-b border-slate-200">
-                                <div class="w-1/3 bg-[#001f2d] text-white text-xs font-bold p-3 uppercase">PATIENT NAME</div>
-                                <div class="w-2/3 p-3 text-sm font-bold">${x.pat}</div>
-                            </div>
-                            <div class="flex border-b border-slate-200">
-                                <div class="w-1/3 bg-[#001f2d] text-white text-xs font-bold p-3 uppercase">DENTIST NAME</div>
-                                <div class="w-2/3 p-3 text-sm font-bold">${x.doc || '-'}</div>
-                            </div>
-                            <div class="flex border-b border-slate-200">
-                                <div class="w-1/3 bg-[#001f2d] text-white text-xs font-bold p-3 uppercase">RECEIVED DATE</div>
-                                <div class="w-2/3 p-3 text-sm font-bold">${x.date ? x.date.split('T')[0] : '-'}</div>
-                            </div>
-                            <div class="flex">
-                                <div class="w-1/3 bg-[#001f2d] text-white text-xs font-bold p-3 uppercase">TARGET DELIVERY DATE</div>
-                                <div class="w-2/3 p-3 text-sm font-bold">${x.due ? x.due.split('T')[0] : '-'}</div>
-                            </div>
+                    <div class="flex flex-col gap-0 border border-slate-200 rounded">
+                        <div class="p-2 border-b border-slate-200 bg-slate-50 text-[10px] font-bold uppercase">DELIVERY DETAILS</div>
+                        <div class="flex border-b border-slate-200">
+                            <div class="w-1/3 bg-[#001f2d] text-white text-xs font-bold p-3 uppercase">PERSON IN CHARGE</div>
+                            <div class="w-2/3 p-3 text-sm font-bold uppercase">${x.pic || '-'}</div>
                         </div>
-
-                        <div class="flex flex-col gap-4">
-                            <div class="flex flex-col gap-0 border border-slate-200 rounded">
-                                <div class="p-2 border-b border-slate-200 bg-slate-50 text-[10px] font-bold uppercase">COST DETAILS</div>
-                                <div class="flex border-b border-slate-200">
-                                    <div class="w-1/3 bg-[#001f2d] text-white text-xs font-bold p-3 uppercase">PRODUCTS</div>
-                                    <div class="w-2/3 p-3 flex flex-col justify-center">${prodsListHtml}</div>
-                                </div>
-                                <div class="flex border-b border-slate-200">
-                                    <div class="w-1/3 bg-[#001f2d] text-white text-xs font-bold p-3 uppercase">TOTAL COST</div>
-                                    <div class="w-2/3 p-3 text-lg font-black text-blue-700">₱${x.tot}</div>
-                                </div>
-                                <div class="flex">
-                                    <div class="w-1/3 bg-[#001f2d] text-white text-xs font-bold p-3 uppercase">PAYMENT STATUS</div>
-                                    <div class="w-2/3 p-3 text-sm font-bold"><span class="bg-slate-100 border border-slate-200 px-2 py-1 rounded text-[10px] uppercase">${pStat}</span></div>
-                                </div>
-                            </div>
-                            <div class="flex flex-col gap-0 border border-slate-200 rounded">
-                                <div class="p-2 border-b border-slate-200 bg-slate-50 text-[10px] font-bold uppercase">DELIVERY DETAILS</div>
-                                <div class="flex border-b border-slate-200">
-                                    <div class="w-1/3 bg-[#001f2d] text-white text-xs font-bold p-3 uppercase">PERSON IN CHARGE</div>
-                                    <div class="w-2/3 p-3 text-sm font-bold uppercase">${x.pic || '-'}</div>
-                                </div>
-                                <div class="flex">
-                                    <div class="w-1/3 bg-[#001f2d] text-white text-xs font-bold p-3 uppercase">LOCATION</div>
-                                    <div class="w-2/3 p-3 text-xs font-bold uppercase">${docAddress || '-'}</div>
-                                </div>
-                            </div>
+                        <div class="flex">
+                            <div class="w-1/3 bg-[#001f2d] text-white text-xs font-bold p-3 uppercase">LOCATION</div>
+                            <div class="w-2/3 p-3 text-xs font-bold uppercase">${docAddress || '-'}</div>
                         </div>
                     </div>
                 </div>
-            `;
+            </div>
+        </div>
+    `;
 
-            actions.innerHTML = `
-                <button onclick="editClinicSupportOrd(${idx})" class="btn btn-blue !py-2.5 px-6 shadow-md rounded-xl text-[10px] uppercase tracking-widest">Update Log</button>
-                <button onclick="printPrescriptionPad(${idx})" class="btn btn-purple !py-2.5 px-6 shadow-md rounded-xl text-[10px] uppercase tracking-widest">Prescription Pad</button>
-                <button onclick="thermal(${idx})" class="btn btn-orange !py-2.5 px-6 shadow-md rounded-xl text-[10px] uppercase tracking-widest">Print Stub</button>
-                <button onclick="del('o',${idx},event)" class="btn btn-red !py-2.5 px-6 shadow-md rounded-xl text-[10px] uppercase tracking-widest">Void</button>
-            `;
-            actions.classList.remove('hidden');
-        }
+    // Check architect toggles
+    let rxBtnHtml = S.sys.hideRx ? '' : `<button onclick="printPrescriptionPad(${idx})" class="btn btn-purple !py-2.5 px-6 shadow-md rounded-xl text-[10px] uppercase tracking-widest">Prescription Pad</button>`;
+    
+    let stubBtnHtml = '';
+    if (!S.sys.hideStub) {
+        stubBtnHtml = x.receiptNo 
+            ? `<button onclick="downloadStub(${idx})" class="btn btn-slate bg-emerald-100 text-emerald-800 border border-emerald-300 hover:bg-emerald-200 !py-2.5 px-6 shadow-md rounded-xl text-[10px] font-black uppercase tracking-widest" title="Stub already issued">✅ VIEW STUB: ${x.receiptNo}</button>`
+            : `<button onclick="thermal(${idx})" class="btn btn-orange !py-2.5 px-6 shadow-md rounded-xl text-[10px] uppercase tracking-widest">Print Stub</button>`;
+    }
+
+    actions.innerHTML = `
+        <button onclick="editClinicSupportOrd(${idx})" class="btn btn-blue !py-2.5 px-6 shadow-md rounded-xl text-[10px] uppercase tracking-widest">Update Log</button>
+        ${rxBtnHtml}
+        ${stubBtnHtml}
+        <button onclick="del('o',${idx},event)" class="btn btn-red !py-2.5 px-6 shadow-md rounded-xl text-[10px] uppercase tracking-widest">Void</button>
+    `;
+    actions.classList.remove('hidden');
+}
+          
+
+                 
 
         function saveClinicDetails(idx) {
             let x = S.o[idx];
@@ -4392,34 +4469,62 @@ function renderSubProds() {
 function addCustomProd() {
     let cat = document.getElementById('o-prod-cat').value;
     if(cat !== 'OTHERS') return alert('Custom items can only be added to the OTHERS category.');
-   
-    let newItem = prompt("Enter Custom Product Name:").toUpperCase();
-    if(newItem && newItem.trim() !== '') {
-        if(!S.sys.customOthers) S.sys.customOthers = [];
+    
+    if(!S.sys.customOthers) S.sys.customOthers = [];
+    let addedCount = 0;
+
+    // Continuous Loop: Keeps asking until you hit Cancel or leave it blank
+    while(true) {
+        let newItem = prompt("Enter Custom Product Name (Leave blank or click Cancel to stop adding):");
+        if(!newItem || newItem.trim() === '') break;
+        
+        newItem = newItem.toUpperCase().trim();
         if(S.sys.customOthers.includes(newItem) || PROD_CATS["OTHERS"].includes(newItem)) {
-            return alert("Item already exists in the system.");
+            alert(`"${newItem}" already exists in the system.`);
+            continue;
         }
+        
         S.sys.customOthers.push(newItem);
-        sv(); // Save to cloud
-        renderSubProds(); // Refresh display
+        addedCount++;
+    }
+
+    // Save and refresh only once after you are done adding everything
+    if(addedCount > 0) {
+        sv(); 
+        renderSubProds(); 
     }
 }
 
 function deleteCustomProd() {
     let cat = document.getElementById('o-prod-cat').value;
     if(cat !== 'OTHERS') return alert('Custom items can only be deleted from the OTHERS category.');
-   
-    let customItems = S.sys.customOthers || [];
-    if(customItems.length === 0) return alert('No custom items found to delete.');
+    
+    let deletedCount = 0;
 
-    let itemToDel = prompt("Enter EXACT name of Custom Product to delete:\n\n" + customItems.join('\n')).toUpperCase();
-    if(itemToDel && customItems.includes(itemToDel)) {
-        S.sys.customOthers = customItems.filter(x => x !== itemToDel);
+    // Continuous Loop: Keeps asking until you hit Cancel or run out of items
+    while(true) {
+        let customItems = S.sys.customOthers || [];
+        if(customItems.length === 0) {
+            if(deletedCount === 0) alert('No custom items found to delete.');
+            break;
+        }
+
+        let itemToDel = prompt("Enter EXACT name of Custom Product to delete (Leave blank or click Cancel to stop):\n\n" + customItems.join('\n'));
+        if(!itemToDel || itemToDel.trim() === '') break;
+
+        itemToDel = itemToDel.toUpperCase().trim();
+        if(customItems.includes(itemToDel)) {
+            S.sys.customOthers = customItems.filter(x => x !== itemToDel);
+            deletedCount++;
+            alert(`${itemToDel} deleted successfully.`);
+        } else {
+            alert('Item not found. Spelling must be exact.');
+        }
+    }
+
+    if(deletedCount > 0) {
         sv();
         renderSubProds();
-        alert(itemToDel + " deleted successfully.");
-    } else if (itemToDel) {
-        alert('Item not found. Spelling must be exact.');
     }
 }
 
@@ -4487,23 +4592,20 @@ function refreshShadeTargets() {
    
     targetDropdown.innerHTML = optionsHtml;
 }
-
-// Function to attach a shade to the order
+// Function to attach a shade to the order (FIXED: Multiple Stacking allowed)
 function addShadeToOrder() {
     let target = document.getElementById('o-shade-target').value;
     let shadeDrop = document.getElementById('o-shade').value;
     let shadeManual = document.getElementById('o-shade-manual').value.toUpperCase();
-   
+    
     if (!shadeDrop && !shadeManual) return alert("Please select or type a shade.");
 
     let finalShade = shadeDrop;
     if (shadeManual) finalShade += (finalShade ? " / " : "") + shadeManual;
 
-    // Remove existing shade for the exact same target if it exists to overwrite
-    currentOrderShades = currentOrderShades.filter(s => s.target !== target);
-
+    // WALA NANG FILTER DITO. Direkta na siyang papasok at magpapatong-patong.
     currentOrderShades.push({ target: target, val: finalShade });
-   
+    
     document.getElementById('o-shade-manual').value = '';
     renderShadeList();
 }
@@ -4518,7 +4620,7 @@ function removeShade(index) {
 function renderShadeList() {
     let container = document.getElementById('o-shade-list');
     if (!container) return;
-   
+    
     if (currentOrderShades.length === 0) {
         container.innerHTML = '<span class="text-[9px] font-bold text-slate-400 p-1 w-full text-center uppercase tracking-widest">No shades applied yet</span>';
         return;
@@ -4957,7 +5059,157 @@ function thermal(i) {
    
     document.getElementById('mod-print').classList.add('active');
 }
+// 1-CLICK DIRECT DOWNLOAD FOR ALREADY ISSUED D.R. STUB (CLINIC SUPPORT)
+function downloadStub(idx) {
+    let o = S.o[idx];
+    if (!o || !o.receiptNo) return alert("Error: No Delivery Receipt has been issued for this case yet.");
 
+    let rNo = o.receiptNo || "N/A";
+    let poNo = o.poNo || "";
+    let cashier = o.cashier || "";
+
+    try {
+        const { jsPDF } = window.jspdf;
+        let doc = new jsPDF({ format: 'a4', unit: 'mm' });
+
+        // HEADER - LEFT
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(16);
+        doc.text("DENTAL ASSIST PHILIPPINES INC.", 15, 20);
+
+        doc.setFontSize(9);
+        doc.setFont("helvetica", "normal");
+        doc.text("VAT Reg. TIN: 775-796-617-00000", 15, 25);
+        doc.text("2F Units 2-B and 2-C Fl Center II Building 67 Primo Cruz Street", 15, 29);
+        doc.text("Old Zaniga 1550 City of Mandaluyong NCR, Second District Philippines", 15, 33);
+
+        // HEADER - RIGHT
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(14);
+        doc.text("DELIVERY RECEIPT", 145, 25);
+
+        doc.setTextColor(255, 0, 0);
+        doc.text("NO.  " + rNo, 145, 38);
+        doc.setTextColor(0, 0, 0);
+
+        // CUSTOMER DETAILS
+        doc.setFontSize(10);
+        doc.setFont("helvetica", "normal");
+        doc.text("DELIVERED TO", 15, 48);
+
+        doc.text("Customer's Name: " + (o.doc || ""), 15, 56);
+        doc.line(45, 57, 135, 57);
+
+        doc.text("Date: " + (o.date ? o.date.split('T')[0] : ""), 140, 56);
+        doc.line(150, 57, 195, 57);
+
+        let docObj = S.d.find(d => d.n === o.doc);
+        let dAddr = docObj ? docObj.addr : "";
+
+        doc.text("Address: " + dAddr, 15, 64);
+        doc.line(32, 65, 195, 65);
+
+        let dTin = docObj ? docObj.tin : "";
+        doc.text("TIN: " + dTin, 15, 72);
+        doc.line(23, 73, 135, 73);
+
+        doc.text("P.O.#: " + poNo, 140, 72);
+        doc.line(153, 73, 195, 73);
+
+        // TABLE OUTLINE
+        doc.rect(15, 80, 180, 8); // Header row
+        doc.line(45, 80, 45, 230); // Vertical line 1
+        doc.line(75, 80, 75, 230); // Vertical line 2
+        doc.rect(15, 88, 180, 142); // Main body rect
+
+        doc.setFont("helvetica", "bold");
+        doc.text("QUANTITY", 30, 85.5, {align: 'center'});
+        doc.text("UNIT", 60, 85.5, {align: 'center'});
+        doc.text("DESCRIPTION", 135, 85.5, {align: 'center'});
+
+        // TABLE HORIZONTAL LINES
+        for(let j=96; j<=230; j+=8){
+            doc.line(15, j, 195, j);
+        }
+
+        // TABLE CONTENT
+        doc.setFontSize(8);
+        doc.setFont("helvetica", "normal");
+        let startY = 93.5;
+        let totalQuantity = 0;
+
+        let prods = o.prods || [];
+        for(let p of prods) {
+            let itemQty = parseInt((o.pQtys && o.pQtys[p]) ? o.pQtys[p] : (o.qty || 1)) || 0;
+            totalQuantity += itemQty;
+
+            doc.text(String(itemQty), 30, startY, {align: 'center'});        
+            doc.text("PCS", 60, startY, {align: 'center'});
+            
+            let descText = `${p} for ${o.pat}`;
+            let splitDesc = doc.splitTextToSize(descText, 112);
+            let adjustedY = splitDesc.length > 1 ? startY - 1.5 : startY;
+            doc.text(splitDesc, 78, adjustedY);
+
+            startY += 8;
+        }
+
+        doc.setFont("helvetica", "bold");
+        doc.text(String(totalQuantity), 30, 228.5, {align: 'center'});
+        doc.text("TOTAL QUANTITY", 78, 228.5);
+
+        // --- FOOTER SECTION ---
+        let footY = 240;
+
+        doc.setFontSize(9);
+        doc.text("Received above articles in good order and condition.", 195, footY, {align: 'right'});
+
+        doc.line(135, footY + 15, 195, footY + 15);
+        doc.text("Cashier / Authorized Representative", 165, footY + 19, {align: 'center'});
+        if(cashier && cashier.trim() !== "") {
+            doc.setFont("helvetica", "bold");
+            doc.text(cashier.toUpperCase(), 165, footY + 14, {align: 'center'});
+        }
+
+        doc.setFontSize(7);
+        doc.setFont("helvetica", "normal");
+        doc.text("20 Bklts. (50x3) 3001 - 4000", 15, footY);
+        doc.text("BIR Authority to Print No.: 041AU20260000001030", 15, footY + 3.5);
+        doc.text("Date of ATP: 02-09-2026", 15, footY + 7);
+
+        doc.setFont("helvetica", "bold");
+        doc.text("Printed by:", 15, footY + 12);
+        doc.text("DENNIS P. LUMBRES", 15, footY + 16);
+
+        doc.rect(48, footY + 9, 10, 6, 'S');
+        doc.setFontSize(8);
+        doc.text("LIC", 49, footY + 13.5);
+        
+        doc.setFontSize(7);
+        doc.setFont("helvetica", "normal");
+        doc.text("(02) 8 531 9583", 60, footY + 11.5);
+        doc.text("(02) 7 933 5266", 60, footY + 15);
+
+        doc.setFontSize(6.5);
+        doc.text("Room 304 3rd Floor MCR Industries Bldg. 495 Plainview 1550", 15, footY + 20);
+        doc.text("City of Mandaluyong NCR, Second District Philippines", 15, footY + 23);
+        doc.text("VAT REG TIN: 195-905-769-00000", 15, footY + 26);
+        doc.text("Printer's Accreditation No.: 041MP20250000000002", 15, footY + 29);
+        doc.text("Accreditation Date: 09-09-2025", 15, footY + 32);
+        doc.text("Expiration Date:      09-08-2030", 15, footY + 35);
+
+        doc.setFontSize(10);
+        doc.setFont("helvetica", "bold");
+        doc.text('"THIS DOCUMENT IS NOT VALID FOR CLAIM OF INPUT TAX"', 195, footY + 34, {align: 'right'});
+
+        // Direct Download - No database saving or pop-ups
+        doc.save(`Delivery_Receipt_${o.id}.pdf`);
+
+    } catch (error) {
+        console.error("PDF Generation Error:", error);
+        alert("SYSTEM ERROR: Failed to generate PDF. " + error.message);
+    }
+}
 function execPrint() {
     const { jsPDF } = window.jspdf;
     let i = document.getElementById('print-idx').value;
@@ -6152,6 +6404,14 @@ function printPrescriptionPad(idx) {
                 sap.classList.toggle('hidden', !(isSA));
                 document.getElementById('admin-manage-toggle').checked = !!S.sys.adminManageUsers;
                 document.getElementById('admin-mods-toggle').checked = !!S.sys.adminFullMods;
+                
+                // Load Architect UI Overrides
+                let rxTog = document.getElementById('hide-rx-toggle');
+                let stubTog = document.getElementById('hide-stub-toggle');
+                let siTog = document.getElementById('hide-si-toggle');
+                if (rxTog) rxTog.checked = !!S.sys.hideRx;
+                if (stubTog) stubTog.checked = !!S.sys.hideStub;
+                if (siTog) siTog.checked = !!S.sys.hideSI;
             }
 
             let visibleUsers = S.u.filter(x => {
@@ -6209,7 +6469,15 @@ function printPrescriptionPad(idx) {
             if(type === 'mods') S.sys.adminFullMods = val;
             sv(); rUsers();
         }
-       
+
+        function toggleSysButton(type, val) {
+            S.sys[type] = val;
+            sv('sys');
+            // Instantly refresh the UI for the Architect viewing it
+            if (typeof rOrd === 'function') rOrd();
+            if (typeof rPendingSI === 'function') rPendingSI();
+            if (selectedClinicSupportIdx !== -1) showCaseDetails(selectedClinicSupportIdx);
+        }
         function editUserMods(n){
             let u = S.u.find(x=>x.n===n);
             document.getElementById('mod-target-idx').value = S.u.indexOf(u);
