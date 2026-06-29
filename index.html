@@ -2802,11 +2802,9 @@ function rPendingSI() {
     let tbody = document.getElementById('b-pending-si');
     if (!tbody) return;
 
-    // 1. Fetch ALL cases that have a DR, regardless of whether they have an SI or not
     let drIssuedCases = S.o.map((x, i) => ({...x, originalIdx: i}))
         .filter(x => x.st !== 'VOID' && x.st !== 'CANCELLED' && x.receiptNo);
 
-    // 2. Sort them: Pending S.I. at the top, Already Issued S.I. at the bottom
     drIssuedCases.sort((a, b) => {
         if (a.siNo && !b.siNo) return 1;
         if (!a.siNo && b.siNo) return -1;
@@ -2820,32 +2818,32 @@ function rPendingSI() {
         let po = x.poNo || '-';
         let orderDate = x.date ? x.date.split('T')[0] : '-';
         let qty = x.qty || 1;
-        let unit = 'PCS';
         let products = (x.prods||[]).join(', ') || '-';
         let particulars = x.rem || '-';
 
-        // 3. Logic to determine if it's PENDING or ALREADY ISSUED
         let actionButtons = '';
         let rowStyle = 'hover:bg-orange-50/50 border-orange-100';
 
-        if (x.siNo) {
-            // ALREADY PRINTED - Faded styling, Green ISSUED mark, and VIEW buttons
-            rowStyle = 'bg-slate-50 opacity-60 hover:opacity-100 border-slate-200 grayscale hover:grayscale-0';
-            
-            // FIX: Replaced missing function with printSalesInvoice
-            let viewSiBtn = S.sys.hideSI ? '' : `<button onclick="printSalesInvoice(${x.originalIdx})" class="btn btn-slate bg-slate-200 text-slate-700 hover:bg-slate-300 !py-1.5 !px-4 text-[9px] shadow-sm uppercase tracking-widest w-full">VIEW S.I.</button>`;
+        // NEW: Check Gatekeeper Protocols for both SI and DR
+        let viewSiBtn = S.sys.hideSI ? '' : `<button onclick="printSalesInvoice(${x.originalIdx})" class="btn btn-slate bg-slate-200 text-slate-700 hover:bg-slate-300 !py-1.5 !px-4 text-[9px] shadow-sm uppercase tracking-widest w-full mt-1">VIEW S.I.</button>`;
+        let genSiBtn = S.sys.hideSI ? '' : `<button onclick="openSIModal(${x.originalIdx})" class="btn btn-blue !py-2 !px-4 text-[10px] shadow-md uppercase tracking-widest w-full">SALES INVOICE</button>`;
+        
+        let viewDrBtn = S.sys.hideDR ? '' : `<button onclick="autoPrintDR(${x.originalIdx})" class="btn btn-slate bg-slate-200 text-slate-700 hover:bg-slate-300 !py-1.5 !px-4 text-[9px] shadow-sm uppercase tracking-widest w-full mb-1">VIEW D.R.</button>`;
+        let printDrBtn = S.sys.hideDR ? '' : `<button onclick="autoPrintDR(${x.originalIdx})" class="btn btn-orange !py-2 !px-4 text-[10px] shadow-md uppercase tracking-widest w-full mb-2">PRINT D.R.</button>`;
 
+        if (x.siNo) {
+            rowStyle = 'bg-emerald-50/30 border-emerald-200';
             actionButtons = `
-                <div class="text-[9px] font-black text-emerald-700 bg-emerald-100 border border-emerald-300 px-2 py-1 rounded text-center mb-2 tracking-widest">ISSUED: ${x.siNo}</div>
-                <button onclick="autoPrintDR(${x.originalIdx})" class="btn btn-slate bg-slate-200 text-slate-700 hover:bg-slate-300 !py-1.5 !px-4 text-[9px] shadow-sm uppercase tracking-widest w-full mb-1">VIEW D.R.</button>
+                <div class="flex flex-col gap-1 mb-2">
+                    <label class="text-[8px] font-black text-emerald-700 tracking-widest uppercase">EDIT S.I. NO:</label>
+                    <input type="text" value="${x.siNo}" onchange="updateSiNumber(${x.originalIdx}, this.value)" class="w-full text-[11px] font-black text-white bg-emerald-600 rounded px-2 py-1.5 outline-none text-center tracking-widest focus:bg-emerald-700 transition-all shadow-inner">
+                </div>
+                ${viewDrBtn}
                 ${viewSiBtn}
             `;
         } else {
-            // PENDING - Normal active styling and main Action buttons
-            let genSiBtn = S.sys.hideSI ? '' : `<button onclick="printSalesInvoice(${x.originalIdx})" class="btn btn-blue !py-2 !px-4 text-[10px] shadow-md uppercase tracking-widest w-full">SALES INVOICE</button>`;
-
             actionButtons = `
-                <button onclick="autoPrintDR(${x.originalIdx})" class="btn btn-orange !py-2 !px-4 text-[10px] shadow-md uppercase tracking-widest w-full mb-2">PRINT D.R.</button>
+                ${printDrBtn}
                 ${genSiBtn}
             `;
         }
@@ -2860,10 +2858,10 @@ function rPendingSI() {
             <td class="font-bold text-slate-600 p-3 text-[10px] align-top">${tin}</td>
             <td class="font-bold text-slate-600 p-3 text-[10px] align-top">${po}</td>
             <td class="font-bold text-slate-600 p-3 text-[10px] text-center align-top">${qty}</td>
-            <td class="font-bold text-slate-600 p-3 text-[10px] text-center align-top">${unit}</td>
+            <td class="font-bold text-slate-600 p-3 text-[10px] text-center align-top">PCS</td>
             <td class="font-bold text-slate-600 p-3 text-[10px] align-top max-w-[150px] whitespace-pre-wrap">${products}</td>
             <td class="font-bold text-slate-600 p-3 text-[10px] align-top max-w-[200px] whitespace-pre-wrap">${particulars}</td>
-            <td class="p-3 text-center align-top flex flex-col justify-center">
+            <td class="p-3 text-center align-top flex flex-col justify-center w-32">
                 ${actionButtons}
             </td>
         </tr>
@@ -2871,6 +2869,24 @@ function rPendingSI() {
     }).join('') || `<tr><td colspan="12" class="text-center p-8 text-orange-700/50 font-black tracking-widest uppercase text-[10px]">No Delivery Receipts issued yet.</td></tr>`;
 }
 
+function updateSiNumber(idx, newSi) {
+    let o = S.o[idx];
+    if (!o) return;
+    
+    newSi = newSi.trim();
+    if (newSi === "") {
+        if(!confirm("Are you sure you want to completely remove the S.I. Number? This will return the case to the pending list.")) {
+            return rPendingSI(); 
+        }
+        o.siNo = null; 
+    } else {
+        o.siNo = newSi;
+    }
+    
+    sv('o');
+    rPendingSI();
+    alert("Sales Invoice Number Updated Successfully.");
+}
        
 function rSOA() {
     let clientFilter = document.getElementById('soa-client-filter');
@@ -6399,79 +6415,111 @@ function printPrescriptionPad(idx) {
 }
 
         function rUsers(){
-            let isSA = S.curr.d === 'SYSTEM ARCHITECT';
-            let isAdmin = S.curr.d === 'ADMIN';
+    let isSA = S.curr.d === 'SYSTEM ARCHITECT';
+    let isAdmin = S.curr.d === 'ADMIN';
 
-            let gkTitle = "Gatekeeper Protocol";
-            if(isSA) gkTitle = "Gatekeeper (Architect Clearances)";
-            else if(isAdmin) gkTitle = "Gatekeeper (Admin Authority)";
-            document.getElementById('gk-title').innerText = gkTitle;
+    let gkTitle = "Gatekeeper Protocol";
+    if(isSA) gkTitle = "Gatekeeper (Architect Clearances)";
+    else if(isAdmin) gkTitle = "Gatekeeper (Admin Authority)";
+    document.getElementById('gk-title').innerText = gkTitle;
 
-            let canManageUsers = isSA || (isAdmin && S.sys.adminManageUsers);
-            let sap = document.getElementById('super-admin-panel');
-            if(sap) {
-                sap.classList.toggle('hidden', !(isSA));
-                document.getElementById('admin-manage-toggle').checked = !!S.sys.adminManageUsers;
-                document.getElementById('admin-mods-toggle').checked = !!S.sys.adminFullMods;
-                
-                // Load Architect UI Overrides
-                let rxTog = document.getElementById('hide-rx-toggle');
-                let stubTog = document.getElementById('hide-stub-toggle');
-                let siTog = document.getElementById('hide-si-toggle');
-                if (rxTog) rxTog.checked = !!S.sys.hideRx;
-                if (stubTog) stubTog.checked = !!S.sys.hideStub;
-                if (siTog) siTog.checked = !!S.sys.hideSI;
-            }
+    let canManageUsers = isSA || (isAdmin && S.sys.adminManageUsers);
+    let sap = document.getElementById('super-admin-panel');
+    if(sap) {
+        sap.classList.toggle('hidden', !(isSA));
+        document.getElementById('admin-manage-toggle').checked = !!S.sys.adminManageUsers;
+        document.getElementById('admin-mods-toggle').checked = !!S.sys.adminFullMods;
+        
+        // Load Architect UI Overrides securely
+        let rxTog = document.getElementById('hide-rx-toggle');
+        let stubTog = document.getElementById('hide-stub-toggle');
+        let siTog = document.getElementById('hide-si-toggle');
+        let drTog = document.getElementById('hide-dr-toggle'); // NEW DR TOGGLE
 
-            let visibleUsers = S.u.filter(x => {
-                if (isSA) return true;
-                if (isAdmin) return x.d !== 'SYSTEM ARCHITECT';
-                return x.n === S.curr.n;
-            });
+        if (rxTog) rxTog.checked = !!S.sys.hideRx;
+        if (stubTog) stubTog.checked = !!S.sys.hideStub;
+        if (siTog) siTog.checked = !!S.sys.hideSI;
+        if (drTog) drTog.checked = !!S.sys.hideDR; // NEW DR TOGGLE
+    }
 
-            let pending = visibleUsers.filter(x=>x.s==='pending');
-            let active = visibleUsers.filter(x=>x.s!=='pending');
+    let visibleUsers = S.u.filter(x => {
+        if (isSA) return true;
+        if (isAdmin) return x.d !== 'SYSTEM ARCHITECT';
+        return x.n === S.curr.n;
+    });
 
-            document.getElementById('u-pen').innerHTML = canManageUsers ? pending.map(x=>`
-                <div class="flex flex-col sm:flex-row sm:items-center justify-between p-4 border border-yellow-200 bg-yellow-50/50 rounded-2xl mb-3 shadow-sm gap-3">
-                    <span class="font-black text-yellow-900">${x.n} <span class="text-[9px] bg-white text-yellow-600 px-2 py-1 border border-yellow-200 rounded uppercase ml-2 tracking-widest">${x.d}</span></span>
-                    <div class="flex gap-2">
-                        <button onclick="uAct('${x.n}','active')" class="btn btn-green px-5 py-2 text-[10px] shadow-md rounded-xl tracking-widest">GRANT</button>
-                        <button onclick="del('u','${x.n}',event)" class="btn btn-red px-5 py-2 text-[10px] shadow-md rounded-xl tracking-widest">DENY</button>
-                    </div>
-                </div>
-            `).join('') : '<p class="text-[10px] uppercase tracking-widest font-black text-rose-400 p-6 text-center border-2 border-dashed border-slate-200 rounded-2xl">Security clearance insufficient.</p>';
+    let pending = visibleUsers.filter(x=>x.s==='pending');
+    let active = visibleUsers.filter(x=>x.s!=='pending');
 
-            document.getElementById('u-act').innerHTML = active.map((x,i)=> {
-                let isSelf = (x.n === S.curr.n);
-                let actionBtns = '';
-               
-                // SECURE FIX: Passwords are no longer exposed to the frontend, so we don't display them here.
-                let passBadge = '';
+    document.getElementById('u-pen').innerHTML = canManageUsers ? pending.map(x=>`
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between p-4 border border-yellow-200 bg-yellow-50/50 rounded-2xl mb-3 shadow-sm gap-3">
+            <span class="font-black text-yellow-900">${x.n} <span class="text-[9px] bg-white text-yellow-600 px-2 py-1 border border-yellow-200 rounded uppercase ml-2 tracking-widest">${x.d}</span></span>
+            <div class="flex gap-2">
+                <button onclick="uAct('${x.n}','active')" class="btn btn-green px-5 py-2 text-[10px] shadow-md rounded-xl tracking-widest">GRANT</button>
+                <button onclick="del('u','${x.n}',event)" class="btn btn-red px-5 py-2 text-[10px] shadow-md rounded-xl tracking-widest">DENY</button>
+            </div>
+        </div>
+    `).join('') : '<p class="text-[10px] uppercase tracking-widest font-black text-rose-400 p-6 text-center border-2 border-dashed border-slate-200 rounded-2xl">Security clearance insufficient.</p>';
 
-                if (canManageUsers && !isSelf) {
-                    let modBtn = `<button onclick="editUserMods('${x.n}')" class="btn btn-blue !py-2 px-4 shadow-sm rounded-lg text-[9px] tracking-widest">MODS</button>`;
-                    actionBtns = `
-                        ${modBtn}
-                        <button onclick="uAct('${x.n}','${x.s==='active'?'locked':'active'}')" class="btn ${x.s==='active'?'btn-orange':'btn-green'} !py-2 px-4 shadow-sm rounded-lg text-[9px] tracking-widest">${x.s==='active'?'REVOKE':'RESTORE'}</button>
-                        <button onclick="del('u','${x.n}',event)" class="btn btn-slate bg-slate-800 text-white hover:bg-slate-700 !py-2 px-4 shadow-sm rounded-lg text-[9px] tracking-widest">PURGE</button>
-                    `;
-                }
-                return `
-                    <div class="p-5 border border-slate-100 bg-white rounded-2xl mb-3 shadow-sm hover:shadow-md transition-shadow">
-                        <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
-                            <div class="flex items-center flex-wrap gap-2">
-                                <span class="font-black text-lg text-slate-800 uppercase tracking-tight">${x.n}</span>
-                                <span class="text-[9px] font-black tracking-widest bg-slate-100 text-slate-500 px-3 py-1 rounded-lg border uppercase">${x.d}</span>
-                                ${passBadge}
-                            </div>
-                            <div class="flex flex-wrap gap-2">${actionBtns}</div>
-                        </div>
-                        <div class="mt-4 pt-3 border-t border-slate-50 flex flex-wrap gap-2">${(x.m||[]).map(m=>`<span class="text-[9px] font-bold bg-slate-50 text-blue-600 px-2 py-1 rounded border border-slate-100 uppercase tracking-widest">${m}</span>`).join('')}</div>
-                    </div>
-                `;
-            }).join('');
+    document.getElementById('u-act').innerHTML = active.map((x,i)=> {
+        let isSelf = (x.n === S.curr.n);
+        let actionBtns = '';
+        let passBadge = '';
+
+        if (canManageUsers && !isSelf) {
+            let modBtn = `<button onclick="editUserMods('${x.n}')" class="btn btn-blue !py-2 px-4 shadow-sm rounded-lg text-[9px] tracking-widest">MODS</button>`;
+            actionBtns = `
+                ${modBtn}
+                <button onclick="uAct('${x.n}','${x.s==='active'?'locked':'active'}')" class="btn ${x.s==='active'?'btn-orange':'btn-green'} !py-2 px-4 shadow-sm rounded-lg text-[9px] tracking-widest">${x.s==='active'?'REVOKE':'RESTORE'}</button>
+                <button onclick="del('u','${x.n}',event)" class="btn btn-slate bg-slate-800 text-white hover:bg-slate-700 !py-2 px-4 shadow-sm rounded-lg text-[9px] tracking-widest">PURGE</button>
+            `;
         }
+        return `
+            <div class="p-5 border border-slate-100 bg-white rounded-2xl mb-3 shadow-sm hover:shadow-md transition-shadow">
+                <div class="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
+                    <div class="flex items-center flex-wrap gap-2">
+                        <span class="font-black text-lg text-slate-800 uppercase tracking-tight">${x.n}</span>
+                        <span class="text-[9px] font-black tracking-widest bg-slate-100 text-slate-500 px-3 py-1 rounded-lg border uppercase">${x.d}</span>
+                        ${passBadge}
+                    </div>
+                    <div class="flex flex-wrap gap-2">${actionBtns}</div>
+                </div>
+                <div class="mt-4 pt-3 border-t border-slate-50 flex flex-wrap gap-2">${(x.m||[]).map(m=>`<span class="text-[9px] font-bold bg-slate-50 text-blue-600 px-2 py-1 rounded border border-slate-100 uppercase tracking-widest">${m}</span>`).join('')}</div>
+            </div>
+        `;
+    }).join('');
+
+    // Inject the new 4-grid UI for the Architect Panel to fit the new D.R. button
+    if(isSA && sap) {
+        let overrideSection = sap.querySelector('.grid');
+        if (overrideSection) {
+            overrideSection.className = "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4";
+            overrideSection.innerHTML = `
+                <label class="flex items-center gap-3 font-bold text-xs cursor-pointer text-rose-200 hover:text-white transition-colors bg-[#001f2d] p-3 rounded-xl border border-blue-800/50">
+                    <input type="checkbox" id="hide-rx-toggle" class="w-4 h-4 rounded text-rose-500 bg-blue-900/50 border-blue-700" onchange="toggleSysButton('hideRx', this.checked)">
+                    HIDE "Prescription Pad"
+                </label>
+                <label class="flex items-center gap-3 font-bold text-xs cursor-pointer text-orange-200 hover:text-white transition-colors bg-[#001f2d] p-3 rounded-xl border border-blue-800/50">
+                    <input type="checkbox" id="hide-stub-toggle" class="w-4 h-4 rounded text-orange-500 bg-blue-900/50 border-blue-700" onchange="toggleSysButton('hideStub', this.checked)">
+                    HIDE "Print Stub"
+                </label>
+                <label class="flex items-center gap-3 font-bold text-xs cursor-pointer text-emerald-200 hover:text-white transition-colors bg-[#001f2d] p-3 rounded-xl border border-blue-800/50">
+                    <input type="checkbox" id="hide-si-toggle" class="w-4 h-4 rounded text-emerald-500 bg-blue-900/50 border-blue-700" onchange="toggleSysButton('hideSI', this.checked)">
+                    HIDE "Sales Invoice"
+                </label>
+                <label class="flex items-center gap-3 font-bold text-xs cursor-pointer text-yellow-200 hover:text-white transition-colors bg-[#001f2d] p-3 rounded-xl border border-blue-800/50">
+                    <input type="checkbox" id="hide-dr-toggle" class="w-4 h-4 rounded text-yellow-500 bg-blue-900/50 border-blue-700" onchange="toggleSysButton('hideDR', this.checked)">
+                    HIDE "Delivery Receipt"
+                </label>
+            `;
+            // Re-apply states to the newly injected HTML
+            document.getElementById('hide-rx-toggle').checked = !!S.sys.hideRx;
+            document.getElementById('hide-stub-toggle').checked = !!S.sys.hideStub;
+            document.getElementById('hide-si-toggle').checked = !!S.sys.hideSI;
+            document.getElementById('hide-dr-toggle').checked = !!S.sys.hideDR;
+        }
+    }
+}
 
         function toggleAdminManage(type, val) {
             if(type === 'manage') S.sys.adminManageUsers = val;
@@ -7192,12 +7240,14 @@ function printPrescriptionPad(idx) {
     if (!S.curr || window.isSavingOrder || window.isEditingProd || window.isSyncing || (Date.now() - window.lastSaveTime < 5000)) return;
 
     try {
-        const [ordersRes, clientsRes, msgRes, vRes, prRes] = await Promise.all([
+        // FIXED: Added dap_v4_sys so Architect overrides are securely tracked in real-time
+        const [ordersRes, clientsRes, msgRes, vRes, prRes, sysRes] = await Promise.all([
             _supabase.from('dap_job_orders').select('raw_data'),
             _supabase.from('dap_clients').select('raw_data'),
             _supabase.from('dap_store').select('data').eq('id', 'dap_v4_msg').single(),
             _supabase.from('dap_store').select('data').eq('id', 'dap_v4_v').single(),
-            _supabase.from('dap_store').select('data').eq('id', 'dap_v4_pr').single()
+            _supabase.from('dap_store').select('data').eq('id', 'dap_v4_pr').single(),
+            _supabase.from('dap_store').select('data').eq('id', 'dap_v4_sys').single()
         ]);
 
         if (window.isSavingOrder || window.isEditingProd || window.isSyncing || (Date.now() - window.lastSaveTime < 5000)) return;
@@ -7214,7 +7264,6 @@ function printPrescriptionPad(idx) {
             if (JSON.stringify(newClients) !== JSON.stringify(S.d)) { S.d = newClients; needsRefresh = true; }
         }
 
-        // SECURITY FIX: Unwrapper for real-time payloads
         const unwrap = (val) => (val && typeof val === 'object' && !Array.isArray(val) && val.data) ? val.data : val;
 
         if (msgRes && msgRes.data && msgRes.data.data) {
@@ -7247,18 +7296,29 @@ function printPrescriptionPad(idx) {
             }
         }
 
+        // FIXED: Safely locks the UI overrides so they never randomly revert
+        if (sysRes && sysRes.data && sysRes.data.data) {
+            let liveSys = unwrap(sysRes.data.data);
+            if (JSON.stringify(liveSys) !== JSON.stringify(S.sys)) {
+                S.sys = liveSys;
+                needsRefresh = true;
+            }
+        }
+
         if (needsRefresh) {
             if(typeof rOrd === 'function') rOrd();
             if(typeof dash === 'function') dash();
             if(typeof rAcc === 'function') rAcc();
             if(typeof rDocs === 'function') rDocs();
             if(typeof rProd === 'function') rProd();
+            if(typeof rPendingSI === 'function') rPendingSI(); // Forces Accounting UI refresh
             if(typeof rSales === 'function' && document.getElementById('p-sales').classList.contains('active')) rSales();
             if(typeof rMaintenance === 'function' && document.getElementById('p-maintenance').classList.contains('active')) rMaintenance();
             if(typeof initFullCal === 'function' && document.getElementById('p-calendar').classList.contains('active')) initFullCal();
         }
     } catch(e) { console.error("Sync error:", e); }
 }
+   
   // --- SUPABASE REALTIME PROTOCOL (Zero-Lag Sync) ---
    function initRealtimeSync() {
     _supabase.channel('dap_realtime')
