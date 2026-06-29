@@ -652,14 +652,17 @@
                 <button onclick="pdf('t-ord-hidden')" class="btn btn-red shrink-0 hidden">PDF EXPORT</button>
             </div>
         </div>
-       
+        
         <div class="flex-1 grid grid-cols-1 xl:grid-cols-12 gap-8 min-h-[700px]">
             <div class="card p-0 flex flex-col h-full xl:col-span-4 border-0 shadow-lg rounded-2xl overflow-hidden bg-white">
+                
+                <!-- UPDATED 3 TABS -->
                 <div class="flex bg-slate-50 border-b shrink-0">
                     <button onclick="switchCSTab('cases')" id="tab-cs-cases" class="flex-1 py-4 font-black text-xs tracking-widest text-[#189ad3] border-b-2 border-[#189ad3] uppercase transition-colors">Cases Queue</button>
                     <button onclick="switchCSTab('docs')" id="tab-cs-docs" class="flex-1 py-4 font-black text-xs tracking-widest text-slate-400 border-b-2 border-transparent hover:text-slate-600 uppercase transition-colors">Client Directory</button>
+                    <button onclick="switchCSTab('concerns')" id="tab-cs-concerns" class="flex-1 py-4 font-black text-xs tracking-widest text-slate-400 border-b-2 border-transparent hover:text-slate-600 uppercase transition-colors">Production Concerns</button>
                 </div>
-               
+                
                 <div id="cs-view-cases" class="flex flex-col flex-1 min-h-0">
                     <div class="p-4 bg-white border-b flex justify-between items-center shrink-0 gap-3">
                         <div class="relative flex-1">
@@ -716,6 +719,27 @@
                         </table>
                     </div>
                 </div>
+
+                <!-- NEW: PRODUCTION CONCERNS VIEW -->
+                <div id="cs-view-concerns" class="flex flex-col flex-1 min-h-0 hidden">
+                    <div class="p-4 bg-white border-b flex justify-between items-center shrink-0">
+                        <h3 class="font-black uppercase text-rose-600 tracking-widest text-xs">Production Concerns & Flags</h3>
+                    </div>
+                    <div class="table-wrap w-full overflow-x-auto flex-1 overflow-y-auto rounded-none border-0 custom-scroll bg-white">
+                        <table class="w-full text-left border-collapse !min-w-[600px]">
+                            <thead class="bg-rose-50 sticky top-0 z-10 shadow-sm">
+                                <tr>
+                                    <th class="py-3 px-4 !text-[10px] text-rose-900">CASE ID</th>
+                                    <th class="!text-[10px] text-rose-900">CONCERN LOG</th>
+                                    <th class="!text-[10px] text-rose-900">ATTACHMENTS</th>
+                                    <th class="!text-[10px] text-rose-900">ACTION</th>
+                                </tr>
+                            </thead>
+                            <tbody id="cs-concerns-list"></tbody>
+                        </table>
+                    </div>
+                </div>
+
             </div>
 
             <div class="xl:col-span-8 flex flex-col gap-8 h-full min-h-0">
@@ -1965,14 +1989,25 @@ async function login() {
 
         function popSel(id, arr){ let el=document.getElementById(id); if(el) el.innerHTML=arr.map(x=>`<option value="${x}">${x}</option>`).join(''); }
 
-        function switchCSTab(t) {
-            document.getElementById('cs-view-cases').classList.toggle('hidden', t !== 'cases');
-            document.getElementById('cs-view-docs').classList.toggle('hidden', t !== 'docs');
-            document.getElementById('tab-cs-cases').className = t === 'cases' ? "flex-1 py-4 font-black text-xs tracking-widest text-[#189ad3] border-b-2 border-[#189ad3] uppercase transition-colors" : "flex-1 py-4 font-black text-xs tracking-widest text-slate-400 border-b-2 border-transparent hover:text-slate-600 uppercase transition-colors";
-            document.getElementById('tab-cs-docs').className = t === 'docs' ? "flex-1 py-4 font-black text-xs tracking-widest text-[#189ad3] border-b-2 border-[#189ad3] uppercase transition-colors" : "flex-1 py-4 font-black text-xs tracking-widest text-slate-400 border-b-2 border-transparent hover:text-slate-600 uppercase transition-colors";
-            if(t === 'docs') rDocs();
-            if(t === 'cases') rOrd();
-        }
+       function switchCSTab(t) {
+    document.getElementById('cs-view-cases').classList.toggle('hidden', t !== 'cases');
+    document.getElementById('cs-view-docs').classList.toggle('hidden', t !== 'docs');
+    
+    let concernsView = document.getElementById('cs-view-concerns');
+    if(concernsView) concernsView.classList.toggle('hidden', t !== 'concerns');
+
+    document.getElementById('tab-cs-cases').className = t === 'cases' ? "flex-1 py-4 font-black text-xs tracking-widest text-[#189ad3] border-b-2 border-[#189ad3] uppercase transition-colors" : "flex-1 py-4 font-black text-xs tracking-widest text-slate-400 border-b-2 border-transparent hover:text-slate-600 uppercase transition-colors";
+    document.getElementById('tab-cs-docs').className = t === 'docs' ? "flex-1 py-4 font-black text-xs tracking-widest text-[#189ad3] border-b-2 border-[#189ad3] uppercase transition-colors" : "flex-1 py-4 font-black text-xs tracking-widest text-slate-400 border-b-2 border-transparent hover:text-slate-600 uppercase transition-colors";
+    
+    let tabConcerns = document.getElementById('tab-cs-concerns');
+    if(tabConcerns) {
+        tabConcerns.className = t === 'concerns' ? "flex-1 py-4 font-black text-xs tracking-widest text-rose-500 border-b-2 border-rose-500 uppercase transition-colors" : "flex-1 py-4 font-black text-xs tracking-widest text-slate-400 border-b-2 border-transparent hover:text-slate-600 uppercase transition-colors";
+    }
+
+    if(t === 'docs') rDocs();
+    if(t === 'cases') rOrd();
+    if(t === 'concerns') rConcerns();
+}
 
        function go(id){
     document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
@@ -3964,18 +3999,15 @@ function rOrd() {
         if (actions) actions.classList.add('hidden');
     }
 }
-
-        function showCaseDetails(idx) {
+function showCaseDetails(idx) {
     selectedClinicSupportIdx = idx;
     let x = S.o[idx];
     if (!x) return;
 
     document.querySelectorAll('#cs-case-list tr').forEach(tr => tr.classList.remove('bg-blue-50/80', 'border-l-blue-500', 'shadow-inner'));
     document.querySelectorAll('#cs-completed-list tr').forEach(tr => tr.classList.remove('bg-emerald-50', 'border-l-emerald-500', 'shadow-inner'));
-    
     let targetRow1 = document.querySelector(`#cs-case-list tr[onclick="showCaseDetails(${idx})"]`);
     if (targetRow1) targetRow1.classList.add('bg-blue-50/80', 'border-l-blue-500', 'shadow-inner');
-    
     let targetRow2 = document.querySelector(`#cs-completed-list tr[onclick="showCaseDetails(${idx})"]`);
     if (targetRow2) targetRow2.classList.add('bg-emerald-50', 'border-l-emerald-500', 'shadow-inner');
 
@@ -4015,6 +4047,42 @@ function rOrd() {
                     <span class="text-[9px] text-slate-400 mt-1 uppercase tracking-widest">SHADE: <span class="text-slate-700">${displayShade}</span></span>
                 </div>`;
     }).join('');
+
+    // --- FIX: QC IMAGES ---
+    let qcImagesHtmlCS = '';
+    if(x.prodImg && x.prodImg !== "[]" && x.prodImg !== "") {
+        try {
+            let rawData = x.prodImg;
+            let qcArr = typeof rawData === 'string' ? (rawData.startsWith('[') ? JSON.parse(rawData) : [rawData]) : rawData;
+            let safeUrlsStr = JSON.stringify(qcArr).replace(/'/g, "\\'").replace(/"/g, '"');
+            qcImagesHtmlCS = qcArr.map((url, i) => `
+                <img src="${url}" class="w-14 h-14 object-cover rounded-lg border shadow-sm cursor-pointer hover:opacity-80" onclick="openCarousel('${safeUrlsStr}', ${i})">
+            `).join('');
+        } catch(e) { console.error("QC error:", e); }
+    }
+
+    // --- FIX: CONCERNS ---
+    let concernsHtmlCS = '';
+    if(x.concernTxt || (x.concernImg && x.concernImg !== "[]" && x.concernImg !== "")) {
+        let cImgHtml = '';
+        try {
+            let rawCData = x.concernImg;
+            let cArr = typeof rawCData === 'string' ? (rawCData.startsWith('[') ? JSON.parse(rawCData) : [rawCData]) : rawCData;
+            let safeCUrlsStr = JSON.stringify(cArr).replace(/'/g, "\\'").replace(/"/g, '"');
+            cImgHtml = cArr.map((url, i) => `
+                <img src="${url}" class="w-14 h-14 object-cover rounded-lg border shadow-sm cursor-pointer hover:opacity-80" onclick="openCarousel('${safeCUrlsStr}', ${i})">
+            `).join('');
+        } catch(e) { console.error("Concern error:", e); }
+
+        concernsHtmlCS = `
+            <div class="flex flex-col gap-0 border border-rose-200 rounded mt-4 bg-rose-50 overflow-hidden">
+                <div class="p-2 border-b border-rose-200 bg-rose-100 text-[10px] font-bold text-rose-800 uppercase">PRODUCTION CONCERNS</div>
+                <div class="p-4 text-xs font-bold text-rose-900 whitespace-pre-wrap">${x.concernTxt || 'No text provided.'}</div>
+                ${cImgHtml ? `<div class="p-3 border-t border-rose-200 flex flex-wrap gap-2 bg-white">${cImgHtml}</div>` : ''}
+            </div>
+        `;
+    }
+
     pane.innerHTML = `
         <div class="flex flex-col max-w-full mx-auto pb-10 bg-white">
             <div class="relative h-48 border border-slate-200 rounded-t-lg overflow-hidden bg-slate-100 mb-4">
@@ -4026,23 +4094,34 @@ function rOrd() {
             </div>
 
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                <div class="flex flex-col gap-0 border border-slate-200 rounded">
-                    <div class="flex border-b border-slate-200">
-                        <div class="w-1/3 bg-[#001f2d] text-white text-xs font-bold p-3 uppercase">PATIENT NAME</div>
-                        <div class="w-2/3 p-3 text-sm font-bold">${x.pat}</div>
+                <div class="flex flex-col gap-4">
+                    <div class="flex flex-col gap-0 border border-slate-200 rounded">
+                        <div class="flex border-b border-slate-200">
+                            <div class="w-1/3 bg-[#001f2d] text-white text-xs font-bold p-3 uppercase">PATIENT NAME</div>
+                            <div class="w-2/3 p-3 text-sm font-bold">${x.pat}</div>
+                        </div>
+                        <div class="flex border-b border-slate-200">
+                            <div class="w-1/3 bg-[#001f2d] text-white text-xs font-bold p-3 uppercase">DENTIST NAME</div>
+                            <div class="w-2/3 p-3 text-sm font-bold">${x.doc || '-'}</div>
+                        </div>
+                        <div class="flex border-b border-slate-200">
+                            <div class="w-1/3 bg-[#001f2d] text-white text-xs font-bold p-3 uppercase">RECEIVED DATE</div>
+                            <div class="w-2/3 p-3 text-sm font-bold">${x.date ? x.date.split('T')[0] : '-'}</div>
+                        </div>
+                        <div class="flex">
+                            <div class="w-1/3 bg-[#001f2d] text-white text-xs font-bold p-3 uppercase">TARGET DELIVERY</div>
+                            <div class="w-2/3 p-3 text-sm font-bold">${x.due ? x.due.split('T')[0] : '-'}</div>
+                        </div>
                     </div>
-                    <div class="flex border-b border-slate-200">
-                        <div class="w-1/3 bg-[#001f2d] text-white text-xs font-bold p-3 uppercase">DENTIST NAME</div>
-                        <div class="w-2/3 p-3 text-sm font-bold">${x.doc || '-'}</div>
+                    
+                    ${qcImagesHtmlCS ? `
+                    <div class="flex flex-col gap-0 border border-purple-200 rounded bg-purple-50 overflow-hidden">
+                        <div class="p-2 border-b border-purple-200 bg-purple-100 text-[10px] font-bold text-purple-800 uppercase">QC / FINISHED IMAGES</div>
+                        <div class="p-3 flex flex-wrap gap-2 bg-white">${qcImagesHtmlCS}</div>
                     </div>
-                    <div class="flex border-b border-slate-200">
-                        <div class="w-1/3 bg-[#001f2d] text-white text-xs font-bold p-3 uppercase">RECEIVED DATE</div>
-                        <div class="w-2/3 p-3 text-sm font-bold">${x.date ? x.date.split('T')[0] : '-'}</div>
-                    </div>
-                    <div class="flex">
-                        <div class="w-1/3 bg-[#001f2d] text-white text-xs font-bold p-3 uppercase">TARGET DELIVERY DATE</div>
-                        <div class="w-2/3 p-3 text-sm font-bold">${x.due ? x.due.split('T')[0] : '-'}</div>
-                    </div>
+                    ` : ''}
+
+                    ${concernsHtmlCS}
                 </div>
 
                 <div class="flex flex-col gap-4">
@@ -4061,25 +4140,12 @@ function rOrd() {
                             <div class="w-2/3 p-3 text-sm font-bold"><span class="bg-slate-100 border border-slate-200 px-2 py-1 rounded text-[10px] uppercase">${pStat}</span></div>
                         </div>
                     </div>
-                    <div class="flex flex-col gap-0 border border-slate-200 rounded">
-                        <div class="p-2 border-b border-slate-200 bg-slate-50 text-[10px] font-bold uppercase">DELIVERY DETAILS</div>
-                        <div class="flex border-b border-slate-200">
-                            <div class="w-1/3 bg-[#001f2d] text-white text-xs font-bold p-3 uppercase">PERSON IN CHARGE</div>
-                            <div class="w-2/3 p-3 text-sm font-bold uppercase">${x.pic || '-'}</div>
-                        </div>
-                        <div class="flex">
-                            <div class="w-1/3 bg-[#001f2d] text-white text-xs font-bold p-3 uppercase">LOCATION</div>
-                            <div class="w-2/3 p-3 text-xs font-bold uppercase">${docAddress || '-'}</div>
-                        </div>
-                    </div>
                 </div>
             </div>
         </div>
     `;
 
-    // Check architect toggles
     let rxBtnHtml = S.sys.hideRx ? '' : `<button onclick="printPrescriptionPad(${idx})" class="btn btn-purple !py-2.5 px-6 shadow-md rounded-xl text-[10px] uppercase tracking-widest">Prescription Pad</button>`;
-    
     let stubBtnHtml = '';
     if (!S.sys.hideStub) {
         stubBtnHtml = x.receiptNo 
@@ -4095,11 +4161,7 @@ function rOrd() {
     `;
     actions.classList.remove('hidden');
 }
-          
-
-                 
-
-        function saveClinicDetails(idx) {
+   function saveClinicDetails(idx) {
             let x = S.o[idx];
             if(!x) return;
             x.retReason = document.getElementById('cs-ret-reason')?.value || '';
@@ -6008,8 +6070,7 @@ function printPrescriptionPad(idx) {
             window.isEditingProd = false; // Reset lock when switching
             rProd();
         }
-
-        function renderProdDetails() {
+function renderProdDetails() {
     let pane = document.getElementById('prod-details-pane');
     let editBtn = document.getElementById('pd-edit-btn');
     if(!pane || !editBtn) return;
@@ -6035,6 +6096,23 @@ function printPrescriptionPad(idx) {
 
     let disabledState = window.isEditingProd ? '' : 'disabled';
     let saveBtnClass = window.isEditingProd ? 'block' : 'hidden';
+
+    // Manual shade display directly in Production Panel
+    let manualShadeDisplay = x.shadeManual ? `<div class="flex items-center mt-2 border-t border-slate-100 pt-2"><div class="w-1/3 text-[10px] text-slate-500 font-black uppercase tracking-widest">Manual Shade</div><div class="w-2/3 text-sm font-bold text-orange-600 uppercase">${x.shadeManual}</div></div>` : '';
+
+    // Concerns Image Processing
+    let concernImages = [];
+    if(x.concernImg) {
+        try { concernImages = JSON.parse(x.concernImg); if(!Array.isArray(concernImages)) concernImages = [x.concernImg]; }
+        catch(e){ concernImages = [x.concernImg]; }
+    }
+    let safeCUrlsStr = JSON.stringify(concernImages).replace(/'/g, "\\'").replace(/"/g, "&quot;");
+    let concernImagesHtml = concernImages.map((imgUrl, i) => `
+        <div class="relative group">
+            <img src="${imgUrl}" class="w-16 h-16 object-cover rounded-lg border border-rose-200 shadow-sm cursor-pointer hover:opacity-80" onclick="openCarousel('${safeCUrlsStr}', ${i})">
+            <button type="button" onclick="removeConcernImg(${i}, event)" class="absolute -top-2 -right-2 bg-red-500 hover:bg-red-600 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs opacity-0 group-hover:opacity-100 transition-opacity pd-editable shadow-md" ${disabledState}>×</button>
+        </div>
+    `).join('');
 
     pane.innerHTML = `
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 mt-2">
@@ -6125,6 +6203,8 @@ function printPrescriptionPad(idx) {
                         <div class="w-1/3 text-[10px] text-slate-500 font-black uppercase tracking-widest">Color Shade</div>
                         <div class="w-2/3"><select id="pd-shade" class="inp !py-3 font-bold text-slate-600 bg-slate-100 border-dashed" disabled>${shadeOpts}</select></div>
                     </div>
+                    ${manualShadeDisplay}
+
                     <div class="flex items-center border-b border-slate-100 pb-4 mt-2">
                         <div class="w-1/3 text-[10px] text-slate-500 font-black uppercase tracking-widest">Tech Assign</div>
                         <div class="w-2/3 flex gap-2">
@@ -6145,13 +6225,10 @@ function printPrescriptionPad(idx) {
                             try {
                                 qcImages = JSON.parse(x.prodImg);
                                 if(!Array.isArray(qcImages)) qcImages = [x.prodImg];
-                            } catch(e) {
-                                qcImages = [x.prodImg];
-                            }
+                            } catch(e) { qcImages = [x.prodImg]; }
                         }
                         
-                        let safeUrlsStr = JSON.stringify(qcImages).replace(/'/g, "&apos;").replace(/"/g, "&quot;");
-                        
+                        let safeUrlsStr = JSON.stringify(qcImages).replace(/'/g, "\\'").replace(/"/g, "&quot;");
                         let qcImagesHtml = qcImages.map((imgUrl, i) => `
                             <div class="relative group">
                                 <img src="${imgUrl}" class="w-16 h-16 object-cover rounded-lg border border-slate-200 shadow-sm cursor-pointer hover:opacity-80 transition-opacity" 
@@ -6178,6 +6255,19 @@ function printPrescriptionPad(idx) {
                         `;
                     })()}
 
+                    <div class="flex flex-col mt-4 border-t border-rose-100 pt-4 bg-rose-50/30 p-4 rounded-xl">
+                        <div class="w-full text-[10px] text-rose-600 font-black uppercase tracking-widest mb-3">Report Concerns / Issues</div>
+                        <textarea id="pd-concern-txt" class="inp !py-3 font-bold text-rose-700 h-20 pd-editable bg-white shadow-inner border-rose-200" placeholder="Type production issues here to alert clinic support..." ${disabledState}>${x.concernTxt||''}</textarea>
+                        
+                        <div class="w-full mt-3">
+                            <span class="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2 block">Attach Concern Images</span>
+                            <input type="file" id="pd-concern-img-file" accept="image/*" multiple class="inp w-full text-[10px] !py-2 bg-white pd-editable border-rose-100" ${disabledState} onchange="uploadConcernImg(this)">
+                            <div class="flex flex-wrap gap-3 mt-2" id="pd-concern-img-preview">
+                                ${concernImagesHtml || '<span class="text-[9px] text-slate-400 font-bold uppercase tracking-widest">NO ATTACHMENTS</span>'}
+                            </div>
+                        </div>
+                    </div>
+
                     <div class="flex flex-col mt-2">
                         <div class="w-full text-[10px] text-slate-500 font-black uppercase tracking-widest mb-3">Directives / Ops Notes</div>
                         <div class="w-full"><textarea id="pd-rem" class="inp !py-4 font-bold text-slate-700 h-20 pd-editable bg-slate-50 shadow-inner" ${disabledState}>${x.rem||''}</textarea></div>
@@ -6192,35 +6282,31 @@ function printPrescriptionPad(idx) {
         </div>
     `;
 }
-        function editProdDetails() {
+       function editProdDetails() {
             window.isEditingProd = true; // Lock Sync
             renderProdDetails();
         }
 
         function saveProdDetails() {
-            if (selectedProdIdx === -1 || !S.o[selectedProdIdx]) return;
-           
-            let x = S.o[selectedProdIdx];
-           
-            x.st = document.getElementById('pd-st').value;
-            x.rem = document.getElementById('pd-rem').value;
-            x.asn = document.getElementById('pd-asn').value;
-            x.age = document.getElementById('pd-age').value;
+    if (selectedProdIdx === -1 || !S.o[selectedProdIdx]) return;
+    let x = S.o[selectedProdIdx];
+    
+    x.st = document.getElementById('pd-st').value;
+    x.rem = document.getElementById('pd-rem').value;
+    x.asn = document.getElementById('pd-asn').value;
+    x.age = document.getElementById('pd-age').value;
+    x.concernTxt = document.getElementById('pd-concern-txt').value; // Saved Concern Text
 
-            let newComp = document.getElementById('pd-comp').value;
-            if(newComp) x.comp = newComp.includes('T') ? newComp : newComp + 'T12:00';
-            else x.comp = "";
+    let newComp = document.getElementById('pd-comp').value;
+    if(newComp) x.comp = newComp.includes('T') ? newComp : newComp + 'T12:00';
+    else x.comp = "";
 
-            window.isEditingProd = false; // Release sync lock
+    window.isEditingProd = false; 
 
-            sv(); rProd(); dash(); if(typeof rAcc === 'function') rAcc();
-           
-            if (document.getElementById('p-calendar').classList.contains('active')) {
-                initFullCal();
-            }
-           
-            alert("Workflow Ticket Updated and Synced.");
-        }
+    sv(); rProd(); dash(); if(typeof rAcc === 'function') rAcc();
+    if (document.getElementById('p-calendar').classList.contains('active')) initFullCal();
+    alert("Workflow Ticket Updated and Synced.");
+}
 
         function renderCatalog() {
             let grid = document.getElementById('price-grid');
@@ -7331,6 +7417,73 @@ function printPrescriptionPad(idx) {
 // Call this inside your initApp() after loading the initial data
 initRealtimeSync();
         initApp();
+        // --- NEW CONCERNS UPLOAD FUNCTIONS ---
+async function uploadConcernImg(inp) {
+    if (inp.files && inp.files.length > 0) {
+        let existingUrls = [];
+        if (selectedProdIdx !== -1 && S.o[selectedProdIdx] && S.o[selectedProdIdx].concernImg) {
+            try { 
+                existingUrls = JSON.parse(S.o[selectedProdIdx].concernImg); 
+                if (!Array.isArray(existingUrls)) existingUrls = [S.o[selectedProdIdx].concernImg]; 
+            } catch(e) { existingUrls = [S.o[selectedProdIdx].concernImg]; }
+        }
+
+        let container = document.getElementById('pd-concern-img-preview');
+        if(container) container.innerHTML += `<span class="text-[9px] text-rose-500 font-bold ml-2">UPLOADING...</span>`;
+
+        let newUrls = [];
+        for (let i = 0; i < inp.files.length; i++) {
+            let publicUrl = await uploadToSupabase(inp.files[i]);
+            if (publicUrl) newUrls.push(publicUrl);
+        }
+
+        if (newUrls.length > 0) {
+            let finalUrls = [...existingUrls, ...newUrls];
+            if (selectedProdIdx !== -1 && S.o[selectedProdIdx]) {
+                S.o[selectedProdIdx].concernImg = JSON.stringify(finalUrls);
+                sv('o');
+                renderProdDetails(); 
+            }
+        } else {
+            alert('Upload failed.');
+            renderProdDetails();
+        }
+    }
+}
+
+function removeConcernImg(index, e) {
+    e.stopPropagation();
+    if (selectedProdIdx === -1 || !S.o[selectedProdIdx]) return;
+    if (!confirm("Remove this concern attachment?")) return;
+    try {
+        let imgs = JSON.parse(S.o[selectedProdIdx].concernImg);
+        if (!Array.isArray(imgs)) imgs = [S.o[selectedProdIdx].concernImg];
+        imgs.splice(index, 1);
+        S.o[selectedProdIdx].concernImg = imgs.length > 0 ? JSON.stringify(imgs) : "";
+        sv('o'); 
+        renderProdDetails(); 
+    } catch (err) {}
+}
+
+function rConcerns() {
+    let concernsCases = S.o.map((x, i) => ({...x, originalIdx: i})).filter(x => x.concernTxt || (x.concernImg && x.concernImg !== "[]" && x.concernImg !== ""));
+    let tbody = document.getElementById('cs-concerns-list');
+    if(tbody) {
+        tbody.innerHTML = concernsCases.map(x => {
+            let attachCount = 0;
+            try { attachCount = JSON.parse(x.concernImg).length; } catch(e) {}
+            return `
+            <tr class="border-b hover:bg-rose-50/50 cursor-pointer transition-colors" onclick="showCaseDetails(${x.originalIdx})">
+                <td class="px-4 py-4 font-black text-rose-700">${x.id}</td>
+                <td class="text-xs font-bold text-slate-600 max-w-xs truncate">${x.concernTxt || 'No text, attachments only.'}</td>
+                <td class="text-[10px] font-bold text-slate-500">${attachCount} Image(s)</td>
+                <td><button class="btn btn-rose bg-rose-100 text-rose-700 hover:bg-rose-200 !py-1 !px-3 !text-[9px] shadow-sm rounded-lg" onclick="showCaseDetails(${x.originalIdx}); event.stopPropagation();">VIEW CASE</button></td>
+            </tr>
+            `;
+        }).join('') || `<tr><td colspan="4" class="text-center p-8 text-slate-400 font-black tracking-widest uppercase text-[10px]">No production concerns raised.</td></tr>`;
+    }
+}
     </script>
+
 </body>
 </html>
