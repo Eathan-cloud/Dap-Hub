@@ -1506,15 +1506,25 @@
         let selectedClinicSupportIdx = -1;
         let currentPayCaseIdx = -1;
         let carouselImages = [];
-let carouselCurrentIdx = 0;
+        let carouselCurrentIdx = 0;
 
-function openCarousel(urlsStr, startIndex) {
+function openCarousel(caseIdx, type, startIndex) {
+    let order = S.o[caseIdx];
+    if (!order) return;
+
+    // Fetch the correct image array based on the type (QC or Concern)
+    let rawData = type === 'qc' ? order.prodImg : order.concernImg;
+    if (!rawData) return;
+
     try {
-        carouselImages = JSON.parse(urlsStr.replace(/&quot;/g, '"').replace(/&apos;/g, "'"));
+        carouselImages = JSON.parse(rawData);
+        if (!Array.isArray(carouselImages)) carouselImages = [rawData];
     } catch(e) {
-        carouselImages = [urlsStr]; 
+        carouselImages = [rawData];
     }
-    if(!carouselImages || carouselImages.length === 0) return;
+
+    if (!carouselImages || carouselImages.length === 0) return;
+
     carouselCurrentIdx = startIndex;
     updateCarouselView();
     document.getElementById('mod-carousel').classList.add('active');
@@ -4054,9 +4064,8 @@ function showCaseDetails(idx) {
         try {
             let rawData = x.prodImg;
             let qcArr = typeof rawData === 'string' ? (rawData.startsWith('[') ? JSON.parse(rawData) : [rawData]) : rawData;
-            let safeUrlsStr = JSON.stringify(qcArr).replace(/'/g, "\\'").replace(/"/g, '"');
             qcImagesHtmlCS = qcArr.map((url, i) => `
-                <img src="${url}" class="w-14 h-14 object-cover rounded-lg border shadow-sm cursor-pointer hover:opacity-80" onclick="openCarousel('${safeUrlsStr}', ${i})">
+                <img src="${url}" class="w-14 h-14 object-cover rounded-lg border shadow-sm cursor-pointer hover:opacity-80" onclick="openCarousel(${idx}, 'qc', ${i})">
             `).join('');
         } catch(e) { console.error("QC error:", e); }
     }
@@ -4068,9 +4077,8 @@ function showCaseDetails(idx) {
         try {
             let rawCData = x.concernImg;
             let cArr = typeof rawCData === 'string' ? (rawCData.startsWith('[') ? JSON.parse(rawCData) : [rawCData]) : rawCData;
-            let safeCUrlsStr = JSON.stringify(cArr).replace(/'/g, "\\'").replace(/"/g, '"');
             cImgHtml = cArr.map((url, i) => `
-                <img src="${url}" class="w-14 h-14 object-cover rounded-lg border shadow-sm cursor-pointer hover:opacity-80" onclick="openCarousel('${safeCUrlsStr}', ${i})">
+                <img src="${url}" class="w-14 h-14 object-cover rounded-lg border shadow-sm cursor-pointer hover:opacity-80" onclick="openCarousel(${idx}, 'concern', ${i})">
             `).join('');
         } catch(e) { console.error("Concern error:", e); }
 
@@ -6061,11 +6069,7 @@ function printPrescriptionPad(idx) {
 
     renderProdDetails();
 }
-
-
-          
-
-        function selectProdRecord(i) {
+    function selectProdRecord(i) {
             selectedProdIdx = i;
             window.isEditingProd = false; // Reset lock when switching
             rProd();
